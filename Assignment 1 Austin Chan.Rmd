@@ -1,0 +1,75 @@
+---
+title: "Data 607 Assignment 1"
+author: "Austin Chan"
+date: "January 28, 2019"
+output: html_document
+---
+
+```{r}
+#loading library plyr to help rename factor levels
+library(plyr)
+
+#load data
+mushrooms = read.csv("agaricus-lepiota.csv",header = F)
+
+#rename columns
+names(mushrooms) = c("Class",
+                     "CapShape",
+                     "CapSurface",
+                     "CapColor",
+                     "Bruises",
+                     "Odor",
+                     "GillAttachment",
+                     "GillSpacing",
+                     "GillSize",
+                     "GillColor",
+                     "StalkShape",
+                     "StalkRoot",
+                     "StalkSurface Above Ring",
+                     "StalkSurface Below Ring",
+                     "StalkColor Above Ring",
+                     "StalkColor Below Ring",
+                     "VeilType",
+                     "VeilColor",
+                     "RingNumber",
+                     "RingType",
+                     "SporePrintColor",
+                     "Population",
+                     "Habitat")
+```
+
+```{r}
+#rename factor levels
+mushrooms$Class = revalue(mushrooms$Class, c("e"="edible","p"="poisonous"))
+mushrooms$CapShape = revalue(mushrooms$CapShape, c("b"="bell","c"="conical","x"="convex","f"="flat","k"="knobbed","s"="sunken"))
+mushrooms$CapSurface = revalue(mushrooms$CapSurface, c("f"="fibrous","g"="grooves","y"="scaly","s"="smooth"))
+mushrooms$CapColor = revalue(mushrooms$CapColor, c("n"="brown","b"="buff","c"="cinnamon","g"="gray","r"="green","p"="pink","u"="purple","e"="red","w"="white","y"="yellow"))
+
+#show first few rows of data renamed
+head(mushrooms)
+```
+
+```{r}
+#subset first four columns of the data
+MushroomSubset = data.frame(mushrooms$Class,mushrooms$CapShape,mushrooms$CapSurface,mushrooms$CapColor)
+
+#show first few rows of the data
+head(MushroomSubset)
+```
+
+
+
+```{r}
+#random logistic model fitting, because I was curious
+MushroomPartialModel = glm(Class~CapShape + CapSurface + CapColor,data = mushrooms, family = binomial(link = logit))
+
+summary(MushroomPartialModel)
+```
+```{r}
+#checking if smaller model is better
+
+library(MASS)
+
+stepAIC(MushroomPartialModel,direction = "both")
+```
+
