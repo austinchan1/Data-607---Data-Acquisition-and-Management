@@ -1,9 +1,11 @@
 ---
-title: "Data 607 Assignment 1"
+title: "Data 607 Assignment 1 - Basic Data Loading and Transformations"
 author: "Austin Chan"
 date: "January 28, 2019"
 output: html_document
 ---
+
+###Loading the data:
 
 ```{r}
 #loading library plyr to help rename factor levels
@@ -38,6 +40,8 @@ names(mushrooms) = c("Class",
                      "Habitat")
 ```
 
+###Renaming the factor levels:
+
 ```{r}
 #rename factor levels
 mushrooms$Class = revalue(mushrooms$Class, c("e"="edible","p"="poisonous"))
@@ -49,6 +53,8 @@ mushrooms$CapColor = revalue(mushrooms$CapColor, c("n"="brown","b"="buff","c"="c
 head(mushrooms)
 ```
 
+###Subsetting the Data Frame:
+
 ```{r}
 #subset first four columns of the data
 MushroomSubset = data.frame(mushrooms$Class,mushrooms$CapShape,mushrooms$CapSurface,mushrooms$CapColor)
@@ -57,6 +63,10 @@ MushroomSubset = data.frame(mushrooms$Class,mushrooms$CapShape,mushrooms$CapSurf
 head(MushroomSubset)
 ```
 
+
+* * *
+
+###Extra Stuff (Logistic Model Fitting)
 
 
 ```{r}
