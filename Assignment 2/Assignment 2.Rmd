@@ -1,0 +1,59 @@
+---
+title: "Data 607 - Assignment 2"
+author: "Austin Chan"
+date: "February 3, 2019"
+output: html_document
+---
+
+###Calling the necessary packages
+
+```{r}
+library(RMySQL)
+```
+
+###Establish MySQL connection
+
+```{r}
+#establish connection to MySQL
+dbinstance = dbConnect(MySQL(),user = "data607",password = "password",dbname = "data607", host = "localhost")
+```
+
+###Fetch table from database
+
+```{r}
+#Fetch table from database
+movieratings = dbGetQuery(dbinstance,"select * from data607.peoplemovieratingsresults")
+```
+
+
+###Look at table
+
+```{r}
+movieratings
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
