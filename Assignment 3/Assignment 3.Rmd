@@ -1,0 +1,111 @@
+---
+title: "Data 607, Assignment 3 - Regex"
+author: "Austin Chan"
+date: "February 12, 2019"
+output: html_document
+---
+
+```{r}
+#load necessary packages
+library(stringr)
+```
+
+
+##3).
+
+###a).
+
+```{r}
+raw.data <-"555-1239Moe Szyslak(636) 555-0113Burns, C. Montgomery555-6542Rev. Timothy Lovejoy555 8904Ned Flanders636-555-3226Simpson, Homer5553642Dr. Julius Hibbert"
+
+name <- unlist(str_extract_all(raw.data,"[[:alpha:]., ]{2,}"))
+```
+
+```{r}
+#Match characters that come after commas or spaces
+FirstName = unlist(str_extract_all(name,"[^,.]*$"))
+
+#remove leading spaces
+FirstName = str_trim(FirstName[FirstName != ""])
+
+#Select the first set of characters for each string
+FirstName = unlist(str_extract_all(FirstName,"^[[:alpha:]]+"))
+
+
+#Match first set of characters that comes before a comma
+LastName = unlist(str_extract_all(name,"^[^,]*"))
+
+#Select last set of alphabet characters for each string
+LastName = unlist(str_extract_all(LastName,"[[:alpha:]]+$"))
+
+
+#put first and last names together
+FullName = paste(FirstName,LastName, sep = " ")
+
+data.frame(name,FullName)
+```
+
+###b).
+
+```{r}
+#Flags true if name has two or more alphabet characters followed by a period
+data.frame(name,HasTitle = str_detect(name,"[[:alpha:]]{2,}\\."))
+```
+
+###c).
+
+```{r}
+#Flags true if name has one capital letter followed by a period
+data.frame(name,HasSecondName = str_detect(name,"[A-Z]{1}\\."))
+```
+
+##4).
+
+###a).
+
+The regular expression `[0-9]+\\$` matches at least one or more numbers followed by a literal dollar sign. However, it will not match any periods and will not match dollar signs at the beginning. This regular expression is probably meant to match US Dollars without change. If a decimal is placed in the string, it will match all numbers after the decimal.
+
+```{r}
+#notice that $10 and 9 are not matched, while the 50$ is matched from 1.50$
+unlist(str_extract_all(c("10$","2$","9999$","$10","1.50$","9"),"[0-9]+\\$"))
+```
+
+###b).
+
+The regular expression `\\b[a-z]{1,4}\\b` matches one to four letter lowercase words that begin and end with lowercase letters.
+
+```{r}
+unlist(str_extract_all("What words does this match? a b c? one two three?","\\b[a-z]{1,4}\\b"))
+```
+
+###c).
+
+The regular expression `.*?\\.txt$` matches strings that end in ".txt" even if there is nothing in front of the dot. It will also match spaces and other random characters.
+
+```{r}
+unlist(str_extract_all(c("DataScience.txt",".txt","aa  .txt", "#$%#     .txt", "I have this long .txt file"),".*?\\.txt"))
+```
+
+###d).
+
+The regular expression `\\d{2}/\\d{2}/\\d{4}` will match two digits followed by a slash and then another two digits and another slash and then four digits. This is probably a date. Though, it will still match dates that are not valid.
+
+```{r}
+#notice how dates without leading zeros are not matched
+unlist(str_extract_all(c("01/01/2000","02/30/9999","00/00/0000","12/1/2018"),"\\d{2}/\\d{2}/\\d{4}"))
+```
+
+###e).
+
+The regular expression `<(.+?)>.+?</\\1>` matches any group of characters (as long as there is at least one character) between "<" and ">" and then matches any number of characters followed by the previous group of characters between "</" and ">". This regular expression is probably used to match hmtl tags and their inner contents.
+
+```{r}
+unlist(str_extract_all(c("<some html tag> I don't like html </some html tag>", "<a> Forgot the exit tag <a>", "< > Does it match empty tags? </ >"),"<(.+?)>.+?</\\1>"))
+```
+
+
+
+
+
+
+
