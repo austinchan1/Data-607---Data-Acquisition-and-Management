@@ -1,0 +1,210 @@
+---
+title: "Data 607 - Project 1, Chess Tournament Data Formatting"
+author: "Austin Chan"
+date: "February 16, 2019"
+output: html_document
+---
+
+###Import raw data and necessary packages
+
+Stringr will be used for parsing text. DT will be used to display nice data tables. Sqldf will be used to perform SQL commands easily on dataframes.
+
+```{r}
+RawTournamentInfo = readChar("tournamentinfo.txt",file.info("tournamentinfo.txt")$size)
+
+library(stringr)
+library(DT)
+library(sqldf)
+```
+
+###Split data into "rows"
+
+Each row is separated by many dashes followed by a newline character. Since readChar interprets each character literally, carriage returns and new lines are stated in plain text, which makes them much easier to find. The code below separates each "row" by finding a long group of dashes followed by a carriage return and newline character. Empty strings are then removed from the output.
+
+```{r}
+RowSplit = unlist(str_split(RawTournamentInfo, "-+\\\r\\\n"))
+RowSplit = RowSplit[RowSplit != ""]
+
+head(RowSplit)
+```
+
+###Split individual player data into rows
+
+In the code below, I split each "row" into a list of individual rows separated by a carriage return and a newline. This list of rows format keeps each player's data as their own element in the list, while parsing each newline into individual rows. Already, the data is looking much cleaner from when I originally started.
+
+```{r}
+ListRows = str_split(RowSplit,"\\\r\\\n")
+
+head(ListRows)
+```
+
+###Separate top row from bottom row
+
+Since the original data contains different information about the same player in sets of two rows, I separated the top row from the bottom row in order to parse the data further. The code below takes the first element of each item in the list and stores it as a vector. The same thing is done for the second row.
+
+```{r}
+TopRows = sapply(1:length(ListRows), function(x) ListRows[[x]][1] )
+BottomRows = sapply(1:length(ListRows), function(x) ListRows[[x]][2] )
+
+head(TopRows)
+head(BottomRows)
+```
+
+###Parse rows by pipe separator ("|")
+
+Now that the rows are neatly organized and all the newline characters are removed, I can finally parse each row by the pipe separator.
+
+```{r}
+TopRowsList = str_split(TopRows[2:length(TopRows)],"\\|")
+BottomRowsList = str_split(BottomRows[2:length(BottomRows)],"\\|")
+
+TopRowsList[1:2]
+BottomRowsList[1:2]
+```
+
+###Create function to fetch and clean text for items in the list
+
+Here, I create a function that fetches a specified element of each item in a list. For example, if I wanted the first element of each item in a list, I would write `GetListElement(ListName,1)`. The function also trims the leading and trailing whitespace for each element, which makes text processing much easier.
+
+```{r}
+GetListElement = function(list,element){
+  
+  output = sapply(1:length(list), function(x) trimws(list[[x]][element],which = "both"))
+  
+  return(output)
+  
+}
+```
+
+###Create function to fetch opponent IDs
+
+The function below parses the opponent IDs. I wrote this function becauase the GetListElement doesn't parse the opponent IDs properly. The function matches the last non space group of characters in each string. This can either be a number, which corresponds to an opponent, or a letter, which means that the person did not have an opponent for a particular round.
+
+```{r}
+GetOpponentID = function(OpponentVector){
+  
+  output = unlist(str_extract_all(OpponentVector,"[^[:space:]]+$"))
+  
+  return(output)
+}
+
+```
+
+###Fetch individual data elements from each row
+
+The following code uses the functions specified above to fetch individual data elements from each row. For the most part, the data elements are nicely formatted and ready to be put into the final dataframe. However, the player pre rating still needs to be processed so that I can calculate the average opponent rating.
+
+```{r}
+PlayerID = as.numeric(GetListElement(TopRowsList,1))
+PlayerName = GetListElement(TopRowsList,2)
+TotalPoints = GetListElement(TopRowsList,3)
+
+Opponent1 = GetOpponentID(GetListElement(TopRowsList,4))
+Opponent2 = GetOpponentID(GetListElement(TopRowsList,5))
+Opponent3 = GetOpponentID(GetListElement(TopRowsList,6))
+Opponent4 = GetOpponentID(GetListElement(TopRowsList,7))
+Opponent5 = GetOpponentID(GetListElement(TopRowsList,8))
+Opponent6 = GetOpponentID(GetListElement(TopRowsList,9))
+Opponent7 = GetOpponentID(GetListElement(TopRowsList,10))
+
+PlayerState = GetListElement(BottomRowsList,1)
+PlayerPreRating = GetListElement(BottomRowsList,2)
+```
+
+###Parse player pre rating
+
+Player pre rating follows a consistent pattern, which makes it relatively painless to parse. Each rating starts with the capital letter "R" followed by a semicolon and then a series of numbers. The code below matches that pattern and then further extracts just the number. Since the pattern only fetches the numbers following the "R:", provisonal ratings are not matched.
+
+```{r}
+PlayerPreRating = unlist(str_extract_all(PlayerPreRating,"R:[[:space:]]*[[:digit:]]+"))
+PlayerPreRating = as.numeric(unlist(str_extract_all(PlayerPreRating,"[[:digit:]]+")))
+
+head(PlayerPreRating)
+```
+
+###Create a table of player rating data
+
+The following code organizes player data by name, ID, and pre rating. This table will be used to calculate the average opponent player rating.
+
+```{r}
+PlayerData = data.frame(PlayerName,PlayerID,PlayerPreRating,stringsAsFactors = F)
+
+DT::datatable(PlayerData,options = list(pageLength = 10))
+```
+
+###Create a table for opponent data
+
+The following code creates a one-to-many table relating player IDs to opponent IDs. The code also removes matches where the player did not compete in a match against another player (these are the na's created through coercion). This table will be used to calculate the average opponent rating for each player.
+
+```{r}
+PlayerOpponent = na.omit(cbind.data.frame(PlayerID = rep(PlayerID,7),Opponent = as.numeric(c(Opponent1,
+                                                                    Opponent2,
+                                                                    Opponent3,
+                                                                    Opponent4,
+                                                                    Opponent5,
+                                                                    Opponent6,
+                                                                    Opponent7))))
+
+DT::datatable(PlayerOpponent,options = list(pageLength = 10))
+```
+
+###Join PlayerOpponent table with PlayerData table
+
+The following code uses sqldf to use sql commands to join tables together. This package is very convenient for SQL minded folk who do not like R's `merge()` function (i.e. me). The code below is a simple left join that relates the PlayerOpponent table with the PlayerData table.
+
+```{r}
+PlayerOpponent = sqldf("SELECT
+                          PO.PlayerID,
+                          PO.Opponent,
+                          PD.PlayerPreRating
+                        FROM
+                          PlayerOpponent as PO
+                        LEFT JOIN
+                          PlayerData as PD on
+                          PO.Opponent = PD.PlayerID")
+
+DT::datatable(PlayerOpponent,options = list(pageLength = 10))
+```
+
+###Calculate average opponent rating
+
+Using sqldf again, I group players by their player IDs and calculate the average rating for all the opponents they faced. This table will be used in the final output table.
+
+```{r}
+AverageOpponentRating = sqldf("SELECT
+                                 PlayerID,
+                                 avg(PlayerPreRating) as AverageOpponentRating
+                               FROM
+                                 PlayerOpponent
+                               GROUP BY
+                                 PlayerID")
+
+DT::datatable(AverageOpponentRating,options = list(pageLength = 10))
+```
+
+###Putting everything together
+
+The code below creates the final output dataframe and displays the result in a neat little table.
+
+```{r}
+FinalTable = data.frame(PlayerName,
+                        PlayerState,
+                        TotalPoints = as.numeric(TotalPoints),
+                        PlayerPreRating,
+                        AverageOpponentRating = AverageOpponentRating$AverageOpponentRating,
+                        stringsAsFactors = F)
+
+DT::datatable(FinalTable,options = list(pageLength = 10))
+```
+
+###Exporting the data
+
+The following code exports the final dataframe to a csv file named "TournamentInfoReformatted.csv". I set row.names to false because it would print the row index as an additional column next to the actual data.
+
+```{r}
+write.csv(FinalTable, file = "TournamentInfoReformatted.csv", row.names = F)
+```
+
+
+
+
