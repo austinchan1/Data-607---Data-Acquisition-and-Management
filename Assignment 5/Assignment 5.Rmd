@@ -1,0 +1,112 @@
+---
+title: "Week 5 - Tidyr"
+author: "Austin Chan"
+date: "February 24, 2019"
+output: html_document
+---
+
+#Tidying and Reformatting
+
+###Call necessary packages
+
+I will be working with tidyr and dplyr to do most of my data tidying and transformation as per the assignment instructions.
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+```
+
+###Load data
+
+I wrote the data exactly as it was presented in the assignment instructions and loaded it into R using `read.csv()`. The data is written in a wide format as suggested. I set `stringsAsFactors` to False because it makes it easier to wrangle the data when it isn't wrapped up into factors.
+
+```{r}
+ArrivalsDelays = read.csv("ArrivalsDelays.csv",stringsAsFactors = F)
+ArrivalsDelays
+```
+
+###Remove na values and rename columns
+
+The data has a blank row with na values across all columns, so I removed that blank row using `na.omit()`. Also, column names were missing for the airline companies and whether a flight was delayed or on time, so I used `rename()` to rename the columns.
+
+```{r}
+ArrivalsDelays = na.omit(ArrivalsDelays)
+ArrivalsDelays = rename(ArrivalsDelays, Airline = X, IsOnTime = X.1)
+
+ArrivalsDelays
+```
+
+###Fill in missing airlines
+
+The raw table omits the airline name for the delayed flights to improve visual clarity when reading the table in a book. However, since I am doing analysis on the table, I need to reformat the `Airline` column to include the airline name for delayed flights. The code below subsets all unique non-blank airline names and fills in the Airline vector. The vector is then reattached to the dataframe.
+
+```{r}
+Airlines = ArrivalsDelays$Airline[ArrivalsDelays$Airline != ""]
+AirlineVector = c(rep(Airlines[1],2),rep(Airlines[2],2))
+
+ArrivalsDelays$Airline = AirlineVector
+
+ArrivalsDelays
+```
+
+###Gather the data
+
+After filling in the blank values, removing empty rows, and renaming columns, I can finally gather the data together into a tidy format. I used the `gather()` function to reorganize the data into a tidy format.
+
+```{r}
+ArrivalsDelays = gather(ArrivalsDelays,"City","Count",3:7)
+ArrivalsDelays
+```
+
+#Analysis
+
+##Which airline is more reliable to fly to specific cities?
+
+I am interested in seeing which airline is more reliable to fly to each city. The way I am going to determine this is by calculating the rate of "on time" flights for each airline in each city. I will then compare them in a nice chart at the end.
+
+###Calculating the percentage of successful flights
+
+The first step in creating this new metric is to group the data by Airline and by City and then summing the "on time" and "delayed" flights to create the `TotalFlights` metric.
+
+The next step is to join the new dataframe onto the original one. This allows the calculation between count and TotalFlights to be easy using `mutate()`.
+
+The final step is to `mutate()` Count and TotalFlights to calculate the percentage of "on time" and "delayed" flights.
+
+```{r}
+TotalFlights = 
+  ArrivalsDelays %>%
+  group_by(Airline,City) %>%
+  summarize(TotalFlights = sum(Count))
+
+ArrivalsDelays = left_join(ArrivalsDelays,TotalFlights, by = c("Airline","City"))
+
+ArrivalsDelays = mutate(ArrivalsDelays, Percentage = Count/TotalFlights)
+
+ArrivalsDelays
+```
+
+###Making the plot
+
+Below, I have written a little ggplot barchart comparing "on time" flight percentage in each city by airline. According to the plot, Alaska is more reliable across the board for every city.
+
+```{r}
+ggplot(filter(ArrivalsDelays, IsOnTime == "on time")) +
+  geom_bar(aes(x = City, y = Percentage, fill = Airline),stat = "identity", position = "dodge", width = 0.7) +
+  labs(title = "On Time Flight Percentage by City")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
