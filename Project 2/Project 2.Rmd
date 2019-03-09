@@ -1,0 +1,287 @@
+---
+title: "Project 2"
+author: "Austin Chan"
+date: "March 2, 2019"
+output: html_document
+---
+
+#Restaurant Menu
+
+This first dataset is a menu from a Chinese restaurant that has been transcribed into an excel spreadsheet. The menu comes from Alexander Ng's post on the week 5 discussion. The menu has been organized into three different sections:
+
+  - Wok Specialties
+  - Combinations
+  - Party Feast
+
+Each section of the menu has its own distinct table structure and pricing model depending on the time of day and which combination of dishes a person orders.
+
+In Alexander's post, he asked the following analysis questions:
+
+  - What is the average price of a dish at the restaurant?
+  - How many dishes contain chicken?
+  - How many dishes can be sold from this menu?
+  
+In order to answer these questions, the data needs to be tidied first. The following section will go through the basic tidying before answering the analysis questions.
+
+##Tidying the Menu
+
+The first step to organize this data is to combine all of the separate tables into one large table. The final structure of the table will contain these variables: 
+
+  - The name of the dishes
+  - Dish descriptions
+  - The time of day the dishes are served
+  - The price of the dish
+  - Which menu section the dish is a part of
+  
+###Load the spreadsheet and necessary packages
+
+Since the menu was written as three separate sections, I transcribed each section into its own sheet on Excel. Excel spreadsheets load slightly differently from .csv files. `read_excel` requires the full file path to fetch the spreadsheet and the specific sheet being fetched needs to be specified. The following code loads the excel spreasheet into three separate tables.
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(readxl)
+library(ggplot2)
+DataPath = paste(getwd(), "/RestaurantMenu.xlsx",sep="")
+
+WokSpecialties = read_excel(DataPath, sheet = "Wok Specialties")
+Combo = read_excel(DataPath, sheet = "Combo It!")
+PartyFeast = read_excel(DataPath, sheet = "Party Feast")
+```
+
+###Look at the data
+
+Taking a look at the data, it is clear that the different sections do not follow a standardized format. Not every dish has a description and the Party Feast section has some menu items with cut off names that need to be removed. Also, there are some typos in the menu prices that need to be fixed.
+
+```{r}
+WokSpecialties
+Combo
+PartyFeast
+```
+
+###Tidying the Wok Specialties section
+
+The wok specialties table is already pretty organized, but it is missing a few columns. In order to fit the final table structure, the NA values for the dish descriptions need to be filled out, the time of day needs to be added, and the menu section needs to be specified.
+
+Adding the time of day and menu section is fairly straightforward. The time of day for all the wok specialties is "All Day" because the menu items have the same price for lunch and dinner. The menu section for all items is "Wok Specialties".
+
+```{r}
+WokSpecialties = WokSpecialties %>%
+  mutate(ServedWhen = "All Day", MenuSection = "Wok Specialties")
+
+WokSpecialties
+```
+
+The next step is slightly more tricky. The NA values in the descriptions need to be filled out. This step involves replacing the NA value with the dish name. The following code filters the specialties by dishes with missing descriptions and then changes the description column to math the dish name. The table is then appended onto the Wok Specialties table, replacing the rows with missing descriptions.
+
+```{r}
+WokSpecialtiesNAFilled = WokSpecialties %>%
+  filter(is.na(Description) == TRUE) %>%
+  mutate(Description = Dish)
+
+WokSpecialtiesFinal = bind_rows(filter(WokSpecialties,is.na(Description) == FALSE),WokSpecialtiesNAFilled)
+
+WokSpecialtiesFinal
+```
+
+###Tidying the Combinations section
+
+The combinations section has the same issues as the wok specialties section, but also has the added complication of different prices depending on the time of day. Perhaps the easiest way to fix this combinations table is to separate it into a lunch combination menu and a dinner combination menu after filling out the description column.
+
+The code below fills out the description column the same way as the wok specialties menu.
+
+```{r}
+ComboNAFilled = Combo %>%
+  filter(is.na(Description) == TRUE) %>%
+  mutate(Description = Dish)
+
+ComboWithDescription = bind_rows(filter(Combo,is.na(Description) == FALSE),ComboNAFilled)
+
+ComboWithDescription
+```
+
+The next step is to separate the menu into a lunch menu and dinner menu and then add the ServedWhen and MenuSection columns. From there, the lunch and dinner combos can be combined into one table.
+
+The code below selects the relevant columns from the `ComboWithDescription` table into separate lunch and dinner tables. The next chunk of code appends the `ServedWhen` and `MenuSection` columns to the tables and specifies whether the `ServedWhen` column corresponds to lunch or dinner. The last bit of code combines the two tables into one large table and displays it. 
+
+```{r}
+LunchCombos = select(ComboWithDescription,Dish,Description,Price = LunchPrice)
+DinnerCombos = select(ComboWithDescription,Dish,Description,Price = DinnerPrice)
+
+LunchCombos = LunchCombos %>%
+  mutate(ServedWhen = "Lunch", MenuSection = "Combination")
+
+DinnerCombos = DinnerCombos %>%
+  mutate(ServedWhen = "Dinner", MenuSection = "Combination")
+
+
+AllCombos = arrange(bind_rows(LunchCombos,DinnerCombos),desc(Price))
+
+AllCombos
+```
+
+The last step is to fix the price typos. For a couple of dishes, there is a typo where the prices were missing their decimal. It is unlikely that a plate of chicken chow mein would be $825 dollars, so any extreme values need to be changed to include their decimals.
+
+The code below selects dishes with prices over $100 and divides the price by 100 to get the decimal in the right place. The next chunk replaces the incorrect rows with the correct rows and displays the final combinations table.
+
+
+```{r}
+AllCombosPriceFix = AllCombos %>%
+  filter(Price > 100) %>%
+  mutate(Price = Price/100)
+
+AllCombosFinal = arrange(bind_rows(filter(AllCombos,Price <= 100),AllCombosPriceFix),desc(Price))
+
+AllCombosFinal
+```
+
+###Tidying the Party Feast section
+
+The party feast section is pretty barren. It is only a list of dishes and nothing else. Some of the dishes have their names cut off. Those rows need to be removed before adding the additional columns onto the table.
+
+Since only the first seven dishes on the menu have their full names, I subsetted the data to only include the first seven dishes. Afterwards, I added the additional columns to match the structure of the previous tables.
+
+Since none of the dishes had descriptions, I matched the description to the dish name.
+
+The pricing on the Party Feast is a little strange. The feast consists of any three dishes in the party feast menu for a total price of \$25.95. Therefore, each dish individually would cost \$8.65.
+
+The party feast is available all day, so every dish is marked as served "All Day".
+
+The party feast menu items are part of the "Party Feast" menu section, so I marked them as such.
+
+
+```{r}
+PartyFeastFixed = PartyFeast %>%
+  slice(1:7) %>%
+  rename(Dish = Entrees) %>%
+  mutate(Description = Dish, Price = 25.95/3, ServedWhen = "All Day", MenuSection = "Party Feast")
+
+PartyFeastFixed
+```
+
+###Putting all the menus together
+
+After tidying each individual menu section, I can finally put together all the menus and do some analysis.
+
+```{r}
+FinalMenu = bind_rows(WokSpecialtiesFinal, AllCombosFinal, PartyFeastFixed)
+
+FinalMenu
+```
+
+
+
+##Analysis Questions
+
+###What is the average price of a dish at the restaurant?
+
+This question is a little vague, but I will try to answer it from different interpretations.
+
+The first interpretation is the average price for all dishes and all menu sections. This average does not consider the time of day or whether the dish is included in a combination or in the party feast menu.
+
+The code below calculates the average price for all dishes.
+
+The simple average of all dishes is approximately \$8.78.
+
+```{r}
+summarise(FinalMenu,AveragePrice = mean(Price))
+```
+
+The second interpretation is the average of a la carte items only for lunch and for dinner separately. This average considers the time of day and does not include the party feast because it is not a la carte.
+
+The code below filters the menu by items served at different times of the day for only the wok specialties menu and the combination menu and then calculates the average price.
+
+The average price for all a la carte dishes served during lunch is about \$8.56.
+
+The average price for all a la carte dishes served during dinner is about \$10.57.
+
+```{r}
+FinalMenu %>%
+  filter(ServedWhen == "All Day" | ServedWhen == "Lunch", MenuSection == "Wok Specialties" | MenuSection == "Combination") %>%
+  summarise(AverageLunchPrice = mean(Price))
+
+FinalMenu %>%
+  filter(ServedWhen == "All Day" | ServedWhen == "Dinner", MenuSection == "Wok Specialties" | MenuSection == "Combination") %>%
+  summarise(AverageDinnerPrice = mean(Price))
+```
+
+It appears that lunch is about two dollars cheaper on average compared to dinner, which is to be expected. However, I did not realize that the average dinner a la carte item would be over ten dollars. If ordering more than three dishes during dinner, it would be cheaper to order the Party Feast. While there is a limited selection for the party feast, it brings the price per dish down closer to the average lunch dish price. 
+
+
+###How many dishes contain chicken?
+
+This question is fairly straightforward. I am going to make the assumption that if the words "Chicken" or "Gai" (chicken in Chinese) are not included in the name or description of the dish, the dish does not contain chicken.
+
+The code below filters the rows in the menu by whether they contain the words "chicken" or "gai" in the dish description or the dish name. The resulting table is filtered further into the distinct dish names, which are counted and shown below.
+
+```{r}
+FinalMenu %>%
+  filter(str_detect(tolower(Description),"chicken") | str_detect(tolower(Description),"gai") | str_detect(tolower(Dish),"chicken") | str_detect(tolower(Dish),"gai")) %>%
+  distinct(Dish) %>%
+  summarise(ChickenDishCount = length(Dish))
+```
+
+There are 23 unique dishes that contain chicken.
+
+
+###How many items can be sold from this menu?
+
+This question is a little vague. I am going to interpret the question as asking for the number of unique a la carte dishes that can be sold individually. In that case, the party feast will not be included because its dishes are not ordered a la carte.
+
+The code below filters the menu by the wok specialties menu and the combination menu. The distinct dish names are selected and then counted and presented below.
+
+```{r}
+FinalMenu %>%
+  filter(MenuSection == "Wok Specialties" | MenuSection == "Combination") %>%
+  distinct(Dish) %>%
+  summarise(ItemsSoldCount = length(Dish))
+```
+
+Another interpretation is the number of total available dishes at the restaurant. This can be found by counting the unique dish names.
+
+The code below selects all distinct dish names and counts them.
+
+```{r}
+FinalMenu %>%
+  distinct(Dish) %>%
+  summarise(AllItemsAvailableCount = length(Dish))
+```
+
+###Extra Analysis
+
+I was curious how much each dish costs on average depending on the time of day they are available. Are lunch-only items significantly cheaper than items available during dinner or all day?
+
+The code below groups the dishes by when they are served and then averages the price among the dishes in each group.
+
+```{r}
+AveragePriceServedWhen = FinalMenu %>%
+  group_by(ServedWhen) %>%
+  summarise(AveragePrice = round(mean(Price), digits = 2))
+
+ggplot(data = AveragePriceServedWhen, aes(x = ServedWhen, y = AveragePrice, fill = ServedWhen)) + geom_bar(stat = "identity") + geom_text(aes(label = AveragePrice), vjust = 1.6, color = "white", size = 3.5) + theme_minimal()
+```
+
+It appears that lunch-only menu items are significantly cheaper compared to dishes served All Day and at dinner. Including the All Day items into the lunch and dinner averages skews the prices upwards by about two dollars. However, when All Day dishes are not included in the price averages, the average cost per dish goes down significantly. Lunch-only menu items are a great value compared to the cost of the dishes available at other times of the day.
+
+
+
+##Conclusion
+
+This Chinese restaurant menu had a lot of interesting challenges when tidying the data. The data was organized in three separate spreadsheets in an excel document, each with a different structure. Most of the difficulty with tidying this data was coming up with a format that all three spreadsheets could conform to. Given that certain dishes were priced differently depending on the time of day, I added the `ServedWhen` column to indicate whether the dish price was for Lunch, Dinner, or All Day. Many dishes did not have descriptions, which were necessary to determine the ingredients of the dish. To fix this issue, I copied the dish name to the description column when a description was not provided. After organizing each individual menu section, I put all of the sections together into one large menu and performed the requested analysis.
+
+The analysis was much easier to do after the data had been tidied. I found that the Lunch menu selections were about two dollars cheaper on average compared to the Dinner menu selections. For parties ordering three dishes, the Party Feast had comparable prices to the Lunch menu selections and was also available during dinner time. This means that ordering the party feast was significantly cheaper than ordering dinner items individually, however, the party feast had a limited selection compared to the full dinner menu. In terms of dish ingredients, chicken is present in 23 of the 38 dishes served at the restaurant (about 60%).
+
+Overall, I think this restaurant has pretty good value and a decent variety of dishes.
+
+
+
+
+
+
+
+
+
+
+
+
