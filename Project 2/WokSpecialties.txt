@@ -1,0 +1,13 @@
+Dish	Description	Price
+Orange Chicken or Beef		$11.95 
+Happy Family	"Shrimp, scallop, roast pork, beef, chicken, vegetables in brown sauce"	$12.95 
+Steak Kew	"Cubed prime filet with bamboo shoots, snow pea pods, mushrooms, water chestnuts, and bok choy"	$14.95 
+Ginger Scallion Fish	Steamed fish filet in a light soy sauce	$12.95 
+Roast Duck	Cantonese Style Half crispy roase duck with hoisin sauce	$13.95 
+Crispy Shrimp	Large tail-on shrimp on a bet of field greens and crispy glass noodle	$13.95 
+Szechwan Fish	"Marinated fresh tender pieces of fish tossed with red pepper, snow pea pods, water chestnuts, and wood ears in a spicy sauce"	$13.95 
+Shanghai Noon	"Tender boneless chicken cubes, lobster, shrimp, scallops, B.B.Q pork, veggies, overa bed of pan fried noodle"	$14.95 
+Walnut Chicken		$11.95 
+Shrimp w. Black Bean Sauce		$13.95 
+Imperial Pork Chop	Tender pieces of crispy pork chops tossed in a red honey glazed sauce	$12.95 
+Neptune's Delight	"Large shrimp, sea scallops, red snapper, dry cherry, tossed with broccoli and veggie"	$13.95 

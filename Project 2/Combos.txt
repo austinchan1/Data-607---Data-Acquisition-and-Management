@@ -1,0 +1,26 @@
+ComboID	Dish	Description	LunchPrice	DinnerPrice
+C01	Chicken Chow Mein		$5.50 	$825 
+C02	Crispy Chicken Wings		$5.50 	$8.25 
+C03	Pork or Veggie Egg Foo Young		$5.75 	$8.25 
+C04	Moo Goo Gai Pan		$5.95 	$8.95 
+C05	Chicken or Pork Lo Mein		$5.95 	$8.95 
+C06	Honey Garlic Chicken		$5.95 	$8.95 
+C07	Sweet & Sour Chicken or Pork		$5.95 	$8.95 
+C08	Chicken Teriyaki Stir Fry		$6.25 	$9.25 
+C09	Beef with Mixed Vegetables		$6.25 	$9.25 
+C10	Hunan Chicken or Beef		$6.25 	$9.25 
+C11	Kung Pao Chicken		$5.95 	$8.95 
+C12	Garlic Beef or Chicken		$6.25 	$9.25 
+C13	Curry Chicken		$5.95 	$8.95 
+C14	Crazy Combo	"Chicken, Roast pork, and Beef"	$6.50 	$9.50 
+C15	Barbecue Boneless Ribs		$5.95 	$8.95 
+C16	Barbecue Spare Ribs		$6.95 	$9.95 
+C17	General Tsao's Chicken		$5.95 	$8.95 
+C18	Sesmae or Orange Chicken (dark meat)		$5.95 	$8.95 
+C19	Bourbon Chicken		$6.25 	$9.25 
+C20	Chicken or Beef with Broccoli		$6.25 	$9.25 
+C21	Pepper Steak		$6.25 	$9.25 
+C22	Cashew Chicken		$6.25 	$9.25 
+C23	Szechwan Shrimp or Scallop		$6.75 	$9.95 
+C25	Shrimp w. Lobster Sauce		$6.75 	$9.95 
+C26	Happy Family		$695 	$9.95 
