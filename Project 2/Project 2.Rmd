@@ -45,19 +45,20 @@ The first step to organize this data is to combine all of the separate tables in
   
 ###Load the spreadsheet and necessary packages
 
-Since the menu was written as three separate sections, I transcribed each section into its own sheet on Excel. Excel spreadsheets load slightly differently from .csv files. `read_excel` requires the full file path to fetch the spreadsheet and the specific sheet being fetched needs to be specified. The following code loads the excel spreasheet into three separate tables.
+Since the menu was written as three separate sections, I transcribed each section into their own separate files and loaded them individually. since some of the item descriptions contain commas, I had to load the files as a tab delimited text files instead to prevent weird parsing issues.
 
 ```{r,message=FALSE}
 library(dplyr)
 library(tidyr)
 library(stringr)
-library(readxl)
 library(ggplot2)
-DataPath = paste(getwd(), "/RestaurantMenu.xlsx",sep="")
 
-WokSpecialties = read_excel(DataPath, sheet = "Wok Specialties")
-Combo = read_excel(DataPath, sheet = "Combo It!")
-PartyFeast = read_excel(DataPath, sheet = "Party Feast")
+WokSpecialties = as_tibble(read.csv("https://raw.githubusercontent.com/austinchan1/Data-607---Data-Acquisition-and-Management/master/Project%202/WokSpecialties.txt", header = T, sep = "\t", stringsAsFactors = F, na.strings = ""))
+Combo = as_tibble(read.csv("https://raw.githubusercontent.com/austinchan1/Data-607---Data-Acquisition-and-Management/master/Project%202/Combos.txt", header = T, sep = "\t", stringsAsFactors = F, na.strings = ""))
+PartyFeast = as_tibble(read.csv("https://raw.githubusercontent.com/austinchan1/Data-607---Data-Acquisition-and-Management/master/Project%202/PartyFeast.txt", header = T, sep = "\t", stringsAsFactors = F, na.strings = ""))
+
+
+#read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/heating_cooling.csv")
 ```
 
 ###Look at the data
@@ -72,7 +73,14 @@ PartyFeast
 
 ###Tidying the Wok Specialties section
 
-The wok specialties table is already pretty organized, but it is missing a few columns. In order to fit the final table structure, the NA values for the dish descriptions need to be filled out, the time of day needs to be added, and the menu section needs to be specified.
+The wok specialties table is already pretty organized, but it is missing a few columns. In order to fit the final table structure, the prices need to be numeric, the NA values for the dish descriptions need to be filled out, the time of day needs to be added, and the menu section needs to be specified.
+
+Changing the prices from characters to numeric and removing the dollar sign are necessary to do further analysis with the prices. The code below finds all dollar signs in the price column and replaces it with nothing and then converts the vector to a numeric data type. That column then replaces the current price column.
+
+```{r}
+WokSpecialties$Price = as.numeric(gsub("\\$", "", WokSpecialties$Price))
+```
+
 
 Adding the time of day and menu section is fairly straightforward. The time of day for all the wok specialties is "All Day" because the menu items have the same price for lunch and dinner. The menu section for all items is "Wok Specialties".
 
@@ -98,6 +106,14 @@ WokSpecialtiesFinal
 ###Tidying the Combinations section
 
 The combinations section has the same issues as the wok specialties section, but also has the added complication of different prices depending on the time of day. Perhaps the easiest way to fix this combinations table is to separate it into a lunch combination menu and a dinner combination menu after filling out the description column.
+
+The code below reformats the prices in the same way as the wok specialties menu.
+
+```{r}
+Combo$LunchPrice = as.numeric(gsub("\\$", "", Combo$LunchPrice))
+Combo$DinnerPrice = as.numeric(gsub("\\$", "", Combo$DinnerPrice))
+```
+
 
 The code below fills out the description column the same way as the wok specialties menu.
 
