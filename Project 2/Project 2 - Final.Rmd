@@ -1,0 +1,1142 @@
+---
+title: "Project 2"
+author: "Austin Chan, Michael Hayes, Stephen Jones"
+date: "March 2, 2019"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: yes
+    theme: united
+    code_folding: hide
+
+---
+<style type="text/css">
+h1.title {
+  color: DarkBlue;
+  font-weight: bold;
+}
+h1 { /* Header 1 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+h2 { /* Header 2 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+h3 { /* Header 3 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+</style>
+* * *
+
+#Restaurant Menu - Austin Chan
+
+This first dataset is a menu from a Chinese restaurant that has been transcribed into an excel spreadsheet. The menu comes from Alexander Ng's post on the week 5 discussion. 
+
+link: https://bbhosted.cuny.edu/webapps/discussionboard/do/message?action=list_messages&course_id=_1705328_1&nav=discussion_board&conf_id=_1845527_1&forum_id=_1908779_1&message_id=_31289549_1
+
+The menu has been organized into three different sections:
+
+  - Wok Specialties
+  - Combinations
+  - Party Feast
+
+Each section of the menu has its own distinct table structure and pricing model depending on the time of day and which combination of dishes a person orders.
+
+In Alexander's post, he asked the following analysis questions:
+
+  - What is the average price of a dish at the restaurant?
+  - How many dishes contain chicken?
+  - How many dishes can be sold from this menu?
+  
+In order to answer these questions, the data needs to be tidied first. The following section will go through the basic tidying before answering the analysis questions.
+
+##Tidying the Menu
+
+The first step to organize this data is to combine all of the separate tables into one large table. The final structure of the table will contain these variables: 
+
+  - The name of the dishes
+  - Dish descriptions
+  - The time of day the dishes are served
+  - The price of the dish
+  - Which menu section the dish is a part of
+  
+###Load the spreadsheet and necessary packages
+
+Since the menu was written as three separate sections, I transcribed each section into their own separate files and loaded them individually. since some of the item descriptions contain commas, I had to load the files as a tab delimited text files instead to prevent weird parsing issues.
+
+```{r,message=FALSE,warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+
+WokSpecialties = as_tibble(read.csv("https://raw.githubusercontent.com/austinchan1/Data-607---Data-Acquisition-and-Management/master/Project%202/WokSpecialties.txt", header = T, sep = "\t", stringsAsFactors = F, na.strings = ""))
+Combo = as_tibble(read.csv("https://raw.githubusercontent.com/austinchan1/Data-607---Data-Acquisition-and-Management/master/Project%202/Combos.txt", header = T, sep = "\t", stringsAsFactors = F, na.strings = ""))
+PartyFeast = as_tibble(read.csv("https://raw.githubusercontent.com/austinchan1/Data-607---Data-Acquisition-and-Management/master/Project%202/PartyFeast.txt", header = T, sep = "\t", stringsAsFactors = F, na.strings = ""))
+
+
+#read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/heating_cooling.csv")
+```
+
+###Look at the data
+
+Taking a look at the data, it is clear that the different sections do not follow a standardized format. Not every dish has a description and the Party Feast section has some menu items with cut off names that need to be removed. Also, there are some typos in the menu prices that need to be fixed.
+
+```{r}
+WokSpecialties
+Combo
+PartyFeast
+```
+
+###Tidying the Wok Specialties section
+
+The wok specialties table is already pretty organized, but it is missing a few columns. In order to fit the final table structure, the prices need to be numeric, the NA values for the dish descriptions need to be filled out, the time of day needs to be added, and the menu section needs to be specified.
+
+Changing the prices from characters to numeric and removing the dollar sign are necessary to do further analysis with the prices. The code below finds all dollar signs in the price column and replaces it with nothing and then converts the vector to a numeric data type. That column then replaces the current price column.
+
+```{r}
+WokSpecialties$Price = as.numeric(gsub("\\$", "", WokSpecialties$Price))
+```
+
+
+Adding the time of day and menu section is fairly straightforward. The time of day for all the wok specialties is "All Day" because the menu items have the same price for lunch and dinner. The menu section for all items is "Wok Specialties".
+
+```{r}
+WokSpecialties = WokSpecialties %>%
+  mutate(ServedWhen = "All Day", MenuSection = "Wok Specialties")
+
+WokSpecialties
+```
+
+The next step is slightly more tricky. The NA values in the descriptions need to be filled out. This step involves replacing the NA value with the dish name. The following code filters the specialties by dishes with missing descriptions and then changes the description column to math the dish name. The table is then appended onto the Wok Specialties table, replacing the rows with missing descriptions.
+
+```{r}
+WokSpecialtiesNAFilled = WokSpecialties %>%
+  filter(is.na(Description) == TRUE) %>%
+  mutate(Description = Dish)
+
+WokSpecialtiesFinal = bind_rows(filter(WokSpecialties,is.na(Description) == FALSE),WokSpecialtiesNAFilled)
+
+WokSpecialtiesFinal
+```
+
+###Tidying the Combinations section
+
+The combinations section has the same issues as the wok specialties section, but also has the added complication of different prices depending on the time of day. Perhaps the easiest way to fix this combinations table is to separate it into a lunch combination menu and a dinner combination menu after filling out the description column.
+
+The code below reformats the prices in the same way as the wok specialties menu.
+
+```{r}
+Combo$LunchPrice = as.numeric(gsub("\\$", "", Combo$LunchPrice))
+Combo$DinnerPrice = as.numeric(gsub("\\$", "", Combo$DinnerPrice))
+```
+
+
+The code below fills out the description column the same way as the wok specialties menu.
+
+```{r}
+ComboNAFilled = Combo %>%
+  filter(is.na(Description) == TRUE) %>%
+  mutate(Description = Dish)
+
+ComboWithDescription = bind_rows(filter(Combo,is.na(Description) == FALSE),ComboNAFilled)
+
+ComboWithDescription
+```
+
+The next step is to separate the menu into a lunch menu and dinner menu and then add the ServedWhen and MenuSection columns. From there, the lunch and dinner combos can be combined into one table.
+
+The code below selects the relevant columns from the `ComboWithDescription` table into separate lunch and dinner tables. The next chunk of code appends the `ServedWhen` and `MenuSection` columns to the tables and specifies whether the `ServedWhen` column corresponds to lunch or dinner. The last bit of code combines the two tables into one large table and displays it. 
+
+```{r}
+LunchCombos = select(ComboWithDescription,Dish,Description,Price = LunchPrice)
+DinnerCombos = select(ComboWithDescription,Dish,Description,Price = DinnerPrice)
+
+LunchCombos = LunchCombos %>%
+  mutate(ServedWhen = "Lunch", MenuSection = "Combination")
+
+DinnerCombos = DinnerCombos %>%
+  mutate(ServedWhen = "Dinner", MenuSection = "Combination")
+
+
+AllCombos = arrange(bind_rows(LunchCombos,DinnerCombos),desc(Price))
+
+AllCombos
+```
+
+The last step is to fix the price typos. For a couple of dishes, there is a typo where the prices were missing their decimal. It is unlikely that a plate of chicken chow mein would be $825 dollars, so any extreme values need to be changed to include their decimals.
+
+The code below selects dishes with prices over $100 and divides the price by 100 to get the decimal in the right place. The next chunk replaces the incorrect rows with the correct rows and displays the final combinations table.
+
+
+```{r}
+AllCombosPriceFix = AllCombos %>%
+  filter(Price > 100) %>%
+  mutate(Price = Price/100)
+
+AllCombosFinal = arrange(bind_rows(filter(AllCombos,Price <= 100),AllCombosPriceFix),desc(Price))
+
+AllCombosFinal
+```
+
+###Tidying the Party Feast section
+
+The party feast section is pretty barren. It is only a list of dishes and nothing else. Some of the dishes have their names cut off. Those rows need to be removed before adding the additional columns onto the table.
+
+Since only the first seven dishes on the menu have their full names, I subsetted the data to only include the first seven dishes. Afterwards, I added the additional columns to match the structure of the previous tables.
+
+Since none of the dishes had descriptions, I matched the description to the dish name.
+
+The pricing on the Party Feast is a little strange. The feast consists of any three dishes in the party feast menu for a total price of \$25.95. Therefore, each dish individually would cost \$8.65.
+
+The party feast is available all day, so every dish is marked as served "All Day".
+
+The party feast menu items are part of the "Party Feast" menu section, so I marked them as such.
+
+
+```{r}
+PartyFeastFixed = PartyFeast %>%
+  slice(1:7) %>%
+  rename(Dish = Entrees) %>%
+  mutate(Description = Dish, Price = 25.95/3, ServedWhen = "All Day", MenuSection = "Party Feast")
+
+PartyFeastFixed
+```
+
+###Putting all the menus together
+
+After tidying each individual menu section, I can finally put together all the menus and do some analysis.
+
+```{r}
+FinalMenu = bind_rows(WokSpecialtiesFinal, AllCombosFinal, PartyFeastFixed)
+
+FinalMenu
+```
+
+
+
+##Analysis Questions
+
+###What is the average price of a dish at the restaurant?
+
+This question is a little vague, but I will try to answer it from different interpretations.
+
+The first interpretation is the average price for all dishes and all menu sections. This average does not consider the time of day or whether the dish is included in a combination or in the party feast menu.
+
+The code below calculates the average price for all dishes.
+
+The simple average of all dishes is approximately \$8.78.
+
+```{r}
+summarise(FinalMenu,AveragePrice = mean(Price))
+```
+
+The second interpretation is the average of a la carte items only for lunch and for dinner separately. This average considers the time of day and does not include the party feast because it is not a la carte.
+
+The code below filters the menu by items served at different times of the day for only the wok specialties menu and the combination menu and then calculates the average price.
+
+The average price for all a la carte dishes served during lunch is about \$8.56.
+
+The average price for all a la carte dishes served during dinner is about \$10.57.
+
+```{r}
+FinalMenu %>%
+  filter(ServedWhen == "All Day" | ServedWhen == "Lunch", MenuSection == "Wok Specialties" | MenuSection == "Combination") %>%
+  summarise(AverageLunchPrice = mean(Price))
+
+FinalMenu %>%
+  filter(ServedWhen == "All Day" | ServedWhen == "Dinner", MenuSection == "Wok Specialties" | MenuSection == "Combination") %>%
+  summarise(AverageDinnerPrice = mean(Price))
+```
+
+It appears that lunch is about two dollars cheaper on average compared to dinner, which is to be expected. However, I did not realize that the average dinner a la carte item would be over ten dollars. If ordering more than three dishes during dinner, it would be cheaper to order the Party Feast. While there is a limited selection for the party feast, it brings the price per dish down closer to the average lunch dish price. 
+
+
+###How many dishes contain chicken?
+
+This question is fairly straightforward. I am going to make the assumption that if the words "Chicken" or "Gai" (chicken in Chinese) are not included in the name or description of the dish, the dish does not contain chicken.
+
+The code below filters the rows in the menu by whether they contain the words "chicken" or "gai" in the dish description or the dish name. The resulting table is filtered further into the distinct dish names, which are counted and shown below.
+
+```{r}
+FinalMenu %>%
+  filter(str_detect(tolower(Description),"chicken") | str_detect(tolower(Description),"gai") | str_detect(tolower(Dish),"chicken") | str_detect(tolower(Dish),"gai")) %>%
+  distinct(Dish) %>%
+  summarise(ChickenDishCount = length(Dish))
+```
+
+There are 23 unique dishes that contain chicken.
+
+
+###How many items can be sold from this menu?
+
+This question is a little vague. I am going to interpret the question as asking for the number of unique a la carte dishes that can be sold individually. In that case, the party feast will not be included because its dishes are not ordered a la carte.
+
+The code below filters the menu by the wok specialties menu and the combination menu. The distinct dish names are selected and then counted and presented below.
+
+```{r}
+FinalMenu %>%
+  filter(MenuSection == "Wok Specialties" | MenuSection == "Combination") %>%
+  distinct(Dish) %>%
+  summarise(ItemsSoldCount = length(Dish))
+```
+
+Another interpretation is the number of total available dishes at the restaurant. This can be found by counting the unique dish names.
+
+The code below selects all distinct dish names and counts them.
+
+```{r}
+FinalMenu %>%
+  distinct(Dish) %>%
+  summarise(AllItemsAvailableCount = length(Dish))
+```
+
+###Extra Analysis
+
+I was curious how much each dish costs on average depending on the time of day they are available. Are lunch-only items significantly cheaper than items available during dinner or all day?
+
+The code below groups the dishes by when they are served and then averages the price among the dishes in each group.
+
+```{r}
+AveragePriceServedWhen = FinalMenu %>%
+  group_by(ServedWhen) %>%
+  summarise(AveragePrice = round(mean(Price), digits = 2))
+
+ggplot(data = AveragePriceServedWhen, aes(x = ServedWhen, y = AveragePrice, fill = ServedWhen)) + geom_bar(stat = "identity") + geom_text(aes(label = AveragePrice), vjust = 1.6, color = "white", size = 3.5) + theme_minimal()
+```
+
+It appears that lunch-only menu items are significantly cheaper compared to dishes served All Day and at dinner. Including the All Day items into the lunch and dinner averages skews the prices upwards by about two dollars. However, when All Day dishes are not included in the price averages, the average cost per dish goes down significantly. Lunch-only menu items are a great value compared to the cost of the dishes available at other times of the day.
+
+
+
+##Conclusion
+
+This Chinese restaurant menu had a lot of interesting challenges when tidying the data. The data was organized in three separate spreadsheets in an excel document, each with a different structure. Most of the difficulty with tidying this data was coming up with a format that all three spreadsheets could conform to. Given that certain dishes were priced differently depending on the time of day, I added the `ServedWhen` column to indicate whether the dish price was for Lunch, Dinner, or All Day. Many dishes did not have descriptions, which were necessary to determine the ingredients of the dish. To fix this issue, I copied the dish name to the description column when a description was not provided. After organizing each individual menu section, I put all of the sections together into one large menu and performed the requested analysis.
+
+The analysis was much easier to do after the data had been tidied. I found that the Lunch menu selections were about two dollars cheaper on average compared to the Dinner menu selections. For parties ordering three dishes, the Party Feast had comparable prices to the Lunch menu selections and was also available during dinner time. This means that ordering the party feast was significantly cheaper than ordering dinner items individually, however, the party feast had a limited selection compared to the full dinner menu. In terms of dish ingredients, chicken is present in 23 of the 38 dishes served at the restaurant (about 60%).
+
+Overall, I think this restaurant has pretty good value and a decent variety of dishes.
+
+* * *
+
+#Color and Heat Absorption Data - Michael Hayes
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(dplyr)
+```
+
+## Tidying the Data
+
+For this "tidying" we will utilize Christopher Ayre's example dataset of Heating and Cooling Absorption.  
+
+Discussion board can be found here: https://bbhosted.cuny.edu/webapps/discussionboard/do/message?action=list_messages&course_id=_1705328_1&nav=discussion_board&conf_id=_1845527_1&forum_id=_1908779_1&message_id=_31283025_1
+
+### Step 1 - Load Dataset
+
+Christopher provided the data in a .csv file, which I've uploaded to github:
+
+```{r}
+heating <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/heating_cooling.csv")
+
+head(heating)
+```
+
+Christopher adeptly pointed out several issues with the data set that make it "untidy".  These are:
+
+1. The variable for "time elapsed" does not have its own column.  In this case we see a column for each ten minute interval.  These should be collapsed into one column.
+
+2. Each color should have its own column.  We will treat one "observation" as the temperature across all the colors, and so the color is merely a variable for a single observation, hence they should all be placed on a single row.
+
+3. Multiple observational units are observed in the same table.  In particular the "heating" and "cooling" data are in one table.
+
+After we have tidied it up, we will do some exploratory analysis and visualizations on the data.
+
+### Step 2 - Gather Times
+
+For this step we will gather multiple timestamp columns into a single column.
+
+As a intermediate step, let's first rename the columns to that they take on a numerical value, this will help with plotting the value later on.
+
+```{r}
+colnames(heating) <- c("color",0,10,20,30,40,50,60,"phase")
+
+heating <- gather(heating, time, temperature, "0":"60")
+
+head(heating, 20)
+
+```
+
+Finally, let's make sure the time is stores as numeric values:
+
+```{r}
+heating$time <- as.numeric(heating$time)
+
+```
+
+
+### Step 3 - Spreading Colors to Columns
+
+Now that's we've gathered up the temperature columns, let's spread out the color columns to include one temp reading for each color + timestamp combination.
+
+
+```{r}
+heating <- spread(heating, color, temperature)
+
+heating
+
+```
+
+### Step 4 - Split observational units to separate tables.
+
+Thankfully this is as simple as subsetting the data based on the "phase" column.  I saved this for the last step to save us from having to perform the tidying operations twice.
+
+```{r}
+cooling <- subset(heating, phase == "cooling")
+heating <- subset(heating, phase == "heating")
+
+head(cooling)
+head(heating)
+
+```
+
+### Step 5 - Exploratory Data Analysis
+
+Let's plot these data in a line graph to get a visual representation of how the colors responded to heating and cooling:
+
+```{r}
+
+plot(x = heating$time, y = heating$black, type = "l", col = "black", xlab = "Time Elapsed (Minutes)", ylab = "Temp (Farheneit)", main = "Heating/Color Absorption")
+lines(x = heating$time, y = heating$red, col = "red")
+lines(x = heating$time, y = heating$green, col = "green")
+lines(x = heating$time, y = heating$pink, col = "pink")
+lines(x = heating$time, y = heating$white, col = "grey")
+
+plot(x = cooling$time, y = cooling$black, type = "l", col = "black", xlab = "Time Elapsed (Minutes)", ylab = "Temp (Farheneit)", main = "Cooling/Color Asborption")
+lines(x = cooling$time, y = cooling$red, col = "red")
+lines(x = cooling$time, y = cooling$green, col = "green")
+lines(x = cooling$time, y = cooling$pink, col = "pink")
+lines(x = cooling$time, y = cooling$white, col = "grey")
+
+```
+
+## Initial findings and Next steps
+
+The graphs look neat, and we can see that black is the fastest heat absorber.  
+
+The graphs also look symmetrical, but now that we see it in this form, it might make sense to view the cooling and heating data in one graph.  
+
+However, the data requires a bit more finagling to get this correct, such as:
+
+1: Minute "60" of the Heating Data is equivalent of Minute "0" of the Cooling.
+
+2: Minutes elapsed in the Cooling data need to be increased by 60 in order to create one continuous time series.
+
+Let's do it!
+
+### Combining Heating and Cooling Data
+
+```{r}
+# Remove minute 0 of the cooling dataset:
+
+heat_cool <- cooling[-1,]
+
+# Add 60 to the time column.
+
+heat_cool$time <- as.numeric(heat_cool$time) + 60
+
+# Stack this underneath the heating data
+
+heat_cool <- rbind(heating, heat_cool)
+
+heat_cool
+
+```
+
+Now we have a nice, neat and tidy dataset showing heating and cooling times.  Let's revisit those graphs we generated previously:
+
+
+```{r}
+plot(x = heat_cool$time, y = heat_cool$black, type = "l", col = "black", xlab = "Time Elapsed (Minutes)", ylab = "Temp (Farheneit)", main = "Cooling/Color Asborption")
+lines(x = heat_cool$time, y = heat_cool$red, col = "red")
+lines(x = heat_cool$time, y = heat_cool$green, col = "green")
+lines(x = heat_cool$time, y = heat_cool$pink, col = "pink")
+lines(x = heat_cool$time, y = heat_cool$white, col = "grey")
+
+```
+
+#### Calculating Rates (Hourly)
+
+Let's get a bit more quantitative.  Let's calculate the rates of heating and cooling for each of the colors:
+
+```{r}
+heating_rate <- (heating[7,3:7] - heating[1,3:7])/60
+
+heating_rate
+
+
+cooling_rate <- (cooling[7,3:7] - cooling[1,3:7])/60
+
+cooling_rate
+```
+
+Since the starting and ending temperatures were equivalent, we see the overall heating and cooling rates to be symmetrical to one another.  
+
+According to this test, a colors heating rate also dicates its cooling rate (or heat retention), at least on average over 120 minutes.
+
+Looking at these visually:
+
+```{r}
+heating_rate <- gather(heating_rate, color, temp)
+
+barplot(heating_rate$temp, col = heating_rate$color, names.arg = heating_rate$color, main = 'Heating Rates (by Color)', xlab = "Color", ylab = "Rate (Degrees per minute)")
+
+```
+
+However, this is looking at averages over the hour.  But what does temp change look like within each 10 minute interval?
+
+We can find this programmatically:
+
+### Calculating Rates (Per 10 Minutes)
+
+```{r}
+black_ht <- diff(heating$black)/10
+green_ht <- diff(heating$green)/10
+pink_ht <- diff(heating$pink)/10
+red_ht <- diff(heating$red)/10
+white_ht <- diff(heating$white)/10
+
+black_cl <- diff(cooling$black)/10
+green_cl <- diff(cooling$green)/10
+pink_cl <- diff(cooling$pink)/10
+red_cl <- diff(cooling$red)/10
+white_cl <- diff(cooling$white)/10
+
+ht_rates <- data.frame(black_ht, black_cl, green_ht, green_cl, pink_ht, pink_cl, red_ht, red_cl, white_ht, white_cl)
+
+ht_rates
+
+```
+
+
+Let's take a look at these visually:
+
+```{r}
+plot(x = seq(10, 60, 10), y = black_ht, type = "l", col = "black", ylim = c(-1.5,1.5), main = "Heating and Cooling Rates", sub = "Postive Values are Heating Rates, Negative are Cooling Rates", xlab = "Time Elapsed (Minutes)", ylab = "Heating and Cooling Rates")
+lines(seq(10, 60, 10),y = black_cl, col = "black")
+lines(seq(10, 60, 10),y = green_ht, col = "green")
+lines(seq(10, 60, 10),y = green_cl, col = "green")
+lines(seq(10, 60, 10),y = pink_ht, col = "pink")
+lines(seq(10, 60, 10),y = pink_cl, col = "pink")
+lines(seq(10, 60, 10),y = red_ht, col = "red")
+lines(seq(10, 60, 10),y = red_cl, col = "red")
+lines(seq(10, 60, 10),y = white_ht, col = "grey")
+lines(seq(10, 60, 10),y = white_cl, col = "grey")
+```
+
+This chart shows both heating and cooling rates.  The heating rates are postive (top of chart), while the cooling rates are negative (bottom of chart). 
+
+Matching like colors can show you how that color behaved in its heating and cooling phase.
+
+Being that our ultimate averages were very symmetrical (i.e. over the full 120 minute span), we might expect that each smaller interval would be symmetrical too.  
+
+However that doesn't always to be the case in this data.  Note the green line is often twice the magnitude of its counterpart.
+
+We can also see that all colors tend to converge to low values at the end of *both* periods.  Perhaps this speaks to a type of heating saturation paired with a similar flatline of cooling.
+
+## Some Conclusions and Questions for Future Analysis
+
+Some initial conclusions from our exploratory data analysis:
+
+1. Black has the fastest heating rate, and ~0.72 degrees per minute.  White has the slowest heating rate, at ~0.33 degrees per minute.  This was probably suspected based on known heuristics, and the data seems to confirm it.
+
+2. Heating rates and cooling rates were symmetrical over a 120 minute span.  However, they don't seem to be symmetric over smaller 10 minute spans.  Lots of variation of rates across that time.
+
+Some questions it raised:
+
+1. There seems to be a wide varience for temperature changes in the 10 minute intervals.  Is this typical?  Do temperature changes "slow" or otherwise change during based on when they occur in the time series?
+
+2. Heat absorbtion may very well not be a linear activity, a perhaps more detailed detail in needed to really understand the dynamics of these rates.  
+
+***  
+
+<style type="text/css">
+
+td {  /* Table  */
+  font-size: 10px;
+}
+pre { /* Code block - determines code spacing between lines */
+  font-size: 12px;
+  max-height: 300px;
+  float: left;
+  width: 100%;
+  overflow-y: auto;
+}
+pre.r {
+  max-height: none;
+}
+div.gold {
+  background-color:#fffcf3; 
+  border-radius: 5px; 
+  padding: 20px;
+}
+div.grey {
+  background-color:#f0ffff; 
+  border-radius: 5px; 
+  padding: 40px;
+}
+</style>
+***  
+<b>In order to render the maps in this code, the `fiftystater` package must be installed via `devtools`. The following code chunk installs `fiftystater`.  
+</b>
+```{r warning=FALSE, message=FALSE}
+
+require(devtools)
+devtools::install_github("wmurphyrd/fiftystater")
+```
+
+#Population Data - Stephen Jones
+##Data Description: Population Data  
+I chose to work with population data posted by Arun Reddy. His description:
+<div class = "grey">
+I found a census dataset for Puerto Rico population for 2010 to 2018. The dataset gives the Estimates of the Total Resident Population and Resident Population Age 18 Years and Older for the United States, States, and Puerto Rico  
+
+The dataset gives the population metrics like estimated, change in population from the estimate, National Rank in populations for each year from 2010 to 2018.  
+
+So there are 57 rows with 61 columns, so the dataset is wider than the length.  
+
+This is a good example of untidy data can be cleansed and make it more presentable. The following steps can be performed to cleanse the data.  
+
+1. All the 4 metrics by years are spread out by column-wise can be changed into rows.  
+
+2. Row names/Column name which includes the year as a concatenation can be well formatted to make more readable.  
+
+3. Some of the column names don't have the right data type like population change, national rank is factorial data type which is unnecessary.  
+
+
+</div>
+***  
+
+
+##Tidying  
+###Load data and examine
+
+Let's read population data from GitHub, check descriptives with summary command. Output is limited by customized CSS in Markdown.
+```{r warning=FALSE,message=FALSE,out.width="100%",fig.align="center"}
+USpop<-read.csv("https://raw.githubusercontent.com/sigmasigmaiota/USpopulation/master/Population DataSet.csv")
+
+#Look at summary table.
+summary(USpop)
+
+```
+<br>  
+
+###Create state-level dataset  
+
+We'll need to remove the divisions listed at the top of the dataset by creating a subset; let's remove the first five rows, wherein data at the region and national level lives. The result is displayed using `kableExtra`.  
+
+```{r warning=FALSE,message=FALSE}
+#subset the data.
+USpop.StateTerr<-USpop[6:57,]
+
+library(kableExtra)
+require(kableExtra)
+kable(head(USpop.StateTerr))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))%>%
+  scroll_box(width = "100%")
+```
+<br>
+We now have information only on the state/territory level. Let's transform and create a row for each year. Additionally, let's omit the first two columns, as SUMLEV is consistent on the state/terr level.  The result is displayed once again using `kableExtra`.    
+
+```{r warning=FALSE,message=FALSE}
+#remove first two columns
+USpop.StateTerr[1:2]<-NULL
+library(tidyr)
+library(dplyr)
+#Create row for each statistic.
+USpop.YearList<-gather(USpop.StateTerr,"Statistic","Value",5:length(colnames(USpop.StateTerr)))
+
+kable(head(USpop.YearList))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+<br>  
+
+###Extract year from former column heading  
+
+Let's extract the year from our new "Year" variable and create a "Statistic" variable; we'll use stringr to extract numeric characters. The new variable is highlighted in light blue.  
+
+```{r warning=FALSE,message=FALSE}
+library(stringr)
+USpop.YearList$Year<-as.numeric(str_extract(USpop.YearList$Statistic,"([0-9]+)"))
+USpop.YearList$Statistic<-gsub("([0-9])|(_)","",USpop.YearList$Statistic)
+
+#Rename value column to specifically address state/terr level data.
+colnames(USpop.YearList)[6]<-"StateValue"
+
+kable(head(USpop.YearList))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))%>%
+  column_spec(column = 7, bold = T, background = "LightCyan")
+
+```
+<br>  
+
+###Add division-level data  
+
+Let's do the same for division information. Using the gather command, division data is added to our table; the change is marked in light blue.  
+
+```{r warning=FALSE,message=FALSE}
+USdiv.YearList<-gather(USpop[2:5,],"Statistic","Value",7:length(colnames(USpop)))
+
+#Remove first two columns.
+USdiv.YearList[1:2]<-NULL
+
+#We also have no need for state or division information at Region level.
+USdiv.YearList[2:3]<-NULL
+
+#Rename NAME column.
+colnames(USdiv.YearList)[2]<-"RegionName"
+
+#Rename Value column in anticipation of merge with state data.
+colnames(USdiv.YearList)[4]<-"RegionValue"
+
+#Clean year and statistic.
+USdiv.YearList$Year<-as.numeric(str_extract(USdiv.YearList$Statistic,"([0-9]+)"))
+USdiv.YearList$Statistic<-gsub("([0-9])|(_)","",USdiv.YearList$Statistic)
+
+#Shorten RegionName.
+USdiv.YearList$RegionName<-gsub("( Region)","",USdiv.YearList$RegionName)
+
+kable(head(USdiv.YearList))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))%>%
+  column_spec(column = 2, bold = T, background = "LightCyan")
+```
+<br>  
+
+###Add region-level data  
+
+Nice. Let's merge by REGION number, Year, and Statistic.  We must use full_join in order to keep Puerto Rico, which is omitted from Region categorization.  
+
+```{r warning=FALSE,message=FALSE}
+USpop2<-full_join(USdiv.YearList,USpop.YearList,by=c("REGION","Statistic","Year"))
+
+kable(head(USpop2))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+<br>  
+
+###Recode division into descriptive string  
+
+We need to pair this with a list of divisions, which differs from Region. A list exists on wikipedia; I've edited from https://en.wikipedia.org/wiki/List_of_regions_of_the_United_States.  
+
+```{r message=FALSE,warning=FALSE}
+
+DIVISION<-as.factor(c(1,2,3,4,5,6,7,8,9))
+DivisionName<-c("New England","Mid-Atlantic","East North Central","West North Central","South Atlantic","East South Central","West South Central","Mountain","Pacific")
+Divisions<-data.frame(DIVISION,DivisionName)
+
+```
+<br>  
+
+###Merge  
+
+Merge Divisions with master dataset and check.  
+
+```{r message=FALSE, warning=FALSE}
+
+USpop3<-full_join(Divisions,USpop2,by=c("DIVISION"))
+
+kable(head(USpop3))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))%>%
+  column_spec(column = 2, bold = T, background = "LightCyan")
+```
+<br>  
+
+###Puerto Rico: no division, no region  
+
+Let's look at Puerto Rico in particular.  
+
+```{r warning=FALSE, message=FALSE}
+
+PR<-USpop3[which(USpop3$NAME == "Puerto Rico"),]
+
+kable(head(PR))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+<br>
+Puerto Rico is not ranked among the other states and has no division assignment. This is problematic for anyone completing comparative analysis on a national level.  Since puerto rico has been assigned no region, there is no regional data available. Let's recode NA as Puerto Rico in RegionName.  
+
+```{r warning=FALSE,message=FALSE}
+
+USpop3$RegionName[which(USpop3$NAME=="Puerto Rico")]<-"Puerto Rico"
+
+#look at Puerto Rico again, replace subset.
+PR<-USpop3[which(USpop3$NAME == "Puerto Rico"),]
+
+kable(head(PR))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))%>%
+  column_spec(column = 5, bold = T, background = "LightCyan")
+```
+<br>  
+
+###Add nation-level statistics  
+
+Let's add a column for National statistics.  
+```{r warning=FALSE,message=FALSE}
+
+#National data only.
+USpop.Nat<-USpop[1,3:ncol(USpop)]
+
+#gather, as before
+USpop.Nat<-gather(USpop.Nat,"Statistic","Value",5:length(colnames(USpop.Nat)))
+
+#Clean year and statistic.
+USpop.Nat$Year<-as.numeric(str_extract(USpop.Nat$Statistic,"([0-9]+)"))
+USpop.Nat$Statistic<-gsub("([0-9])|(_)","",USpop.Nat$Statistic)
+
+#omit columns and unnecessary rows.
+USpop.Nat<-USpop.Nat[,5:7]
+USpop.Nat<-USpop.Nat[which(USpop.Nat$Value!="X"),]
+
+#rename coluns in preparation for merge.
+colnames(USpop.Nat)[2]<-"NationalValue"
+
+#merge into master data.
+USpop4<-full_join(USpop.Nat,USpop3,by=c("Statistic","Year"))
+
+kable(head(USpop4))%>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))%>%
+  column_spec(column = 2, bold = T, background = "LightCyan")
+```
+
+<br>  
+
+###Create subsets by statistic  
+
+Let's sort the data by type of statistic. I'll use the subsets in the code below to render maps.  
+<br>
+This concludes the tidying portion of the project; the original cleaning objective in Arun Reddy's post has been accomplished. As there were no outlines provided for analysis, let's identify  
+1. States with the greatest population growth in 2018.  
+2. States with the greatest decrease in population in 2018.  
+3. States with the greatest population perentage by nation and by region.  
+<br>
+
+```{r warning=FALSE,message=FALSE}
+USpopESTIMATESBASE<-USpop4[which(USpop4$Statistic=="ESTIMATESBASE"),]
+USpopESTIMATE<-USpop4[which(USpop4$Statistic=="POPESTIMATE"),]
+USpopPOPCHG<-USpop4[which(USpop4$Statistic=="NPOPCHG"),]
+USpopPPOPCHG<-USpop4[which(USpop4$Statistic=="PPOPCHG"),]
+
+```
+***
+##Results  
+
+###Setup  
+
+Finally, let's map our results; I've used `ggplot2` to render, `ggthemes` and `viridis` to customize, various tools in the `tidyverse` package, as well as `fiftystater`, which needs to be installed via github. The packages `mapdata` and `mapproj` supply map data for puerto rico, which is excluded from the `fiftystater` package.  
+<center>`# install.packages("devtools")`
+`devtools::install_github("wmurphyrd/fiftystater")`  
+</center>  
+###Map: population increases in 2018  
+
+Let's map population increases in 2018.  
+
+```{r warning=FALSE,message=FALSE,out.width="100%",fig.align="center"}
+
+
+USpopPOPCHG2018<-USpop4[which(USpop4$Statistic=="NPOPCHG"&USpop4$Year==2018),]
+USpopPOPCHG2018$StateValue<-as.numeric(USpopPOPCHG2018$StateValue)
+USpopPOPCHG2018$StateValue[which(USpopPOPCHG2018$StateValue<0)]<-0
+
+
+require(ggplot2)
+require(fiftystater)
+require(ggthemes)
+require(tidyverse)
+require(viridis)
+
+USpopPOPCHG2018$statefull<-tolower(USpopPOPCHG2018$NAME)
+
+data("fifty_states")
+
+library(mapdata)
+library(mapproj)
+
+#Puerto Rico color must be set manually; there has been a decrease in population, so we've matched the color representing zero growth.
+pr<-map_data('worldHires','Puerto Rico')
+pr<-subset(pr,long<0) 
+prmap<-ggplot(USpopPOPCHG2018)+geom_polygon(data=pr,aes(long,lat,group=group),fill="lemonchiffon1")+
+  coord_fixed(1.0)+
+  expand_limits(x = fifty_states$long, y = fifty_states$lat) +
+  coord_map(projection = "mercator", xlim = c(-68, -65), ylim = c(18.6,17.8))+
+  labs(x = "", y = "") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())
+
+Total_plot<-ggplot(USpopPOPCHG2018, aes(map_id=statefull)) + 
+  geom_map(aes(fill=StateValue), map=fifty_states) + 
+  expand_limits(x = fifty_states$long, y = fifty_states$lat) +
+  coord_map(projection = "mercator", xlim = c(-125, -65), ylim = c(50,23)) +
+  scale_x_continuous(breaks = NULL) + 
+  scale_y_continuous(breaks = NULL) +
+  labs(x = "", y = "") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())+
+  scale_fill_viridis(breaks=c(-100000,-25000,-5000,0,5000,25000,100000,300000),
+labels=c('-100K--25K','-25K--5K','-25K-0','0-5000','5k-25k','25K-100K','100K-300K','300K+'),begin=1,end=.25,option="magma")+
+  guides(fill=guide_legend(title="Growth by state/terr",size="legend",title.theme=element_text(size=9,angle=0)))+
+  ggtitle("Population Increases by State, 2018")
+
+library(grid)
+library(grDevices)
+
+png(file="Project2a.png",w=4000,h=4000,res=500,bg="transparent")
+grid.newpage()
+v1<-viewport(width = 1, height = 1, x = 0.5, y = 0.5) #plot area for the main map
+v4<-viewport(width = 0.12, height = 0.12, x = 0.48, y = 0.30) #plot area for the inset map)
+print(Total_plot,vp=v1) 
+print(prmap,vp=v4)
+dev.off()
+
+knitr::include_graphics("Project2a.png")
+
+```
+
+The greatest estimated population increase in 2018, by far, occurred in Texas and Florida.  
+
+***  
+
+###Map: population decreases in 2018  
+
+Let's map population losses.  
+
+```{r warning=FALSE,message=FALSE,out.width="100%",fig.align="center"}
+USpopPOPCHG2018<-USpop4[which(USpop4$Statistic=="NPOPCHG"&USpop4$Year==2018),]
+USpopPOPCHG2018$StateValue<-as.numeric(USpopPOPCHG2018$StateValue)
+USpopPOPCHG2018$StateValue[which(USpopPOPCHG2018$StateValue>0)]<-0
+
+USpopPOPCHG2018$statefull<-tolower(USpopPOPCHG2018$NAME)
+
+data("fifty_states")
+
+pr<-map_data('worldHires','Puerto Rico')
+pr<-subset(pr,long<0) 
+prmap<-ggplot(USpopPOPCHG2018)+geom_polygon(data=pr,aes(long,lat,group=group),fill="khaki3")+
+  coord_fixed(1.0)+
+  expand_limits(x = fifty_states$long, y = fifty_states$lat) +
+  coord_map(projection = "mercator", xlim = c(-68, -65), ylim = c(18.6,17.8))+
+  labs(x = "", y = "") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())
+
+Total_plot<-ggplot(USpopPOPCHG2018, aes(map_id=statefull)) + 
+  geom_map(aes(fill=StateValue), map=fifty_states) + 
+  expand_limits(x = fifty_states$long, y = fifty_states$lat) +
+  coord_map(projection = "mercator", xlim = c(-125, -65), ylim = c(50,23)) +
+  scale_x_continuous(breaks = NULL) + 
+  scale_y_continuous(breaks = NULL) +
+  labs(x = "", y = "") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())+
+  scale_fill_viridis(breaks=c(-300000,-100000,-25000,-5000,0),
+labels=c('300K+','100K-300K','25K-100K','5K-25K','0-25K'),begin=1,end=0,option="cividis")+
+  guides(fill=guide_legend(title="Decrease pop by state/terr",size="legend",title.theme=element_text(size=9,angle=0)))+
+  ggtitle("Population Decreases by State, 2018")
+
+
+png(file="Project2b.png",w=4000,h=4000,res=500,bg="transparent")
+grid.newpage()
+v1<-viewport(width = 1, height = 1, x = 0.5, y = 0.5) #plot area for the main map
+v4<-viewport(width = 0.12, height = 0.12, x = 0.48, y = 0.30) #plot area for the inset map)
+print(Total_plot,vp=v1) 
+print(prmap,vp=v4)
+dev.off()
+
+knitr::include_graphics("Project2b.png")
+
+```
+It's easy to see that West Virginia and Louisiana is estimated to have experienced a decrease in population in 2018, as well as Illinois and New York. Puerto Rico is estimated to have experienced the greatest decrease in population.  
+
+***  
+
+###Map: population by state  
+
+Let's calculate percentage of national and division population resides in each state or territory using projected population data for 2018. Let's map percentage of national population by state.  
+
+```{r warning=FALSE,message=FALSE,out.width="100%",fig.align="center"}
+
+USpopESTIMATE2018<-USpop4[which(USpopESTIMATE$Year==2018),]
+USpopESTIMATE2018$StateValue<-as.numeric(USpopESTIMATE2018$StateValue)
+USpopESTIMATE2018$RegionValue<-as.numeric(USpopESTIMATE2018$RegionValue)
+USpopESTIMATE2018$NationalValue<-as.numeric(USpopESTIMATE2018$NationalValue)
+USpopESTIMATE2018$NatPer <- USpopESTIMATE2018$StateValue/USpopESTIMATE2018$NationalValue
+USpopESTIMATE2018$RegPer <- USpopESTIMATE2018$StateValue/USpopESTIMATE2018$RegionValue
+
+USpopESTIMATE2018$statefull<-tolower(USpopESTIMATE2018$NAME)
+
+data("fifty_states")
+
+pr<-map_data('worldHires','Puerto Rico')
+pr<-subset(pr,long<0) 
+prmap<-ggplot(USpopESTIMATE2018)+geom_polygon(data=pr,aes(long,lat,group=group),fill="grey49")+
+  coord_fixed(1.0)+
+  expand_limits(x = fifty_states$long, y = fifty_states$lat) +
+  coord_map(projection = "mercator", xlim = c(-68, -65), ylim = c(18.6,17.8))+
+  labs(x = "", y = "") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())
+
+Total_plot<-ggplot(USpopESTIMATE2018, aes(map_id=statefull)) + 
+  geom_map(aes(fill=NatPer), map=fifty_states) + 
+  expand_limits(x = fifty_states$long, y = fifty_states$lat) +
+  coord_map(projection = "mercator", xlim = c(-125, -65), ylim = c(50,23)) +
+  scale_x_continuous(breaks = NULL) + 
+  scale_y_continuous(breaks = NULL) +
+  labs(x = "", y = "") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())+
+  scale_fill_viridis(breaks=c(.05,.1,.15,.20),
+labels=c('0-5%','6-10%','11-15%','15% +'),begin=.3,end=1,option="cividis")+
+  guides(fill=guide_legend(title="Nat Pop % by state/terr",size="legend",title.theme=element_text(size=9,angle=0)))+
+  ggtitle("National Population Percentage by State, 2018")
+
+
+png(file="Project2c.png",w=4000,h=4000,res=500,bg="transparent")
+grid.newpage()
+v1<-viewport(width = 1, height = 1, x = 0.5, y = 0.5) #plot area for the main map
+v4<-viewport(width = 0.12, height = 0.12, x = 0.48, y = 0.30) #plot area for the inset map)
+print(Total_plot,vp=v1) 
+print(prmap,vp=v4)
+dev.off()
+
+knitr::include_graphics("Project2c.png")
+
+```
+
+It's apparent that the states with greatest populations are California, Texas, Florida and New York. With New York's estimated population decreasing, it's curious that it still accounts for one of the greatest percentages of national population.  
+
+***  
+###Map: population percentage by region  
+
+
+Let's map state percentage by region.  
+
+```{r warning=FALSE,message=FALSE,out.width="100%",fig.align="center"}
+
+data("fifty_states")
+
+pr<-map_data('worldHires','Puerto Rico')
+pr<-subset(pr,long<0) 
+prmap<-ggplot(USpopESTIMATE2018)+geom_polygon(data=pr,aes(long,lat,group=group),fill="grey98")+
+  coord_fixed(1.0)+
+  expand_limits(x = fifty_states$long, y = fifty_states$lat) +
+  coord_map(projection = "mercator", xlim = c(-68, -65), ylim = c(18.6,17.8))+
+  labs(x = "", y = "") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())
+
+Total_plot<-ggplot(USpopESTIMATE2018, aes(map_id=statefull)) + 
+  geom_map(aes(fill=RegPer), map=fifty_states) + 
+  expand_limits(x = fifty_states$long, y = fifty_states$lat) +
+  coord_map(projection = "mercator", xlim = c(-125, -65), ylim = c(50,23)) +
+  scale_x_continuous(breaks = NULL) + 
+  scale_y_continuous(breaks = NULL) +
+  labs(x = "", y = "") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())+
+  scale_fill_viridis(breaks=c(.05,.1,.15,.20),
+labels=c('0-5%','6-10%','11-15%','15% +'),begin=.3,end=1,option="cividis")+
+  guides(fill=guide_legend(title="Region Pop % by state/terr",size="legend",title.theme=element_text(size=9,angle=0)))+
+  ggtitle("Regional Population Percentage by State, 2018")
+
+png(file="Project2d.png",w=4000,h=4000,res=500,bg="transparent")
+grid.newpage()
+v1<-viewport(width = 1, height = 1, x = 0.5, y = 0.5) #plot area for the main map
+v4<-viewport(width = 0.12, height = 0.12, x = 0.48, y = 0.30) #plot area for the inset map)
+print(Total_plot,vp=v1) 
+print(prmap,vp=v4)
+dev.off()
+
+knitr::include_graphics("Project2d.png")
+
+```  
+
+##Conclusions  
+
+If we omit Puerto Rico due to the fact that there is no region or division assignment, we see that California, as expected, dominates the West Region, while New York dominates the Northeast to a lesser degree. Texas is most populous in the South, and Illinois carries the Midwest by only a slight margin.  
+
+Such data could be used to form an argument for representation in Congress. Should a state such as California, with 12.1% of the national population, be represented by only 2 senators? On a local level, these data could be combined with demographic data to understand why some areas are experiencing negative growth; Puerto Rico, for example, was decimated by a recent hurricane.  
+
+
+
+
+
+  
+  
+    
+    
+    
+***
+    
+
+
+
+
+
+
+
+
+
+
