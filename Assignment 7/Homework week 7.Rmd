@@ -1,0 +1,127 @@
+---
+title: "Week 7 - html, xml, json"
+author: "Austin Chan"
+date: "March 14, 2019"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+---
+
+#Load Necessary Packages
+
+The packages I will be using for this assignment are XML, rvest, jsonlite, and DT.
+
+XML, rvest, and jsonlite are going to be used to parse XML, HTML, and JSON data respectively. The DT package is going to be used to display the dataframes at the end.
+
+```{r, warning=FALSE,message=FALSE}
+library(XML)
+library(rvest)
+library(jsonlite)
+library(DT)
+```
+
+
+#Load in files
+
+The files will be loaded directly from individual files I have created for the assignment. For the most part, I have tried to replicate the data to the best of my ability across all three data formats. Let's see how that goes.
+
+* * *
+
+##Loading HTML File
+
+Loading the HTML file was pretty straightforward. The rvest package has a lot of functionality for reading HTML tables into dataframes.
+
+The first line of code parses the HTML document into a recognizable format. The second line of code transforms the parsed HTML into a dataframe. The third line displays the dataframe.
+
+
+```{r}
+parsedHTML = read_html(x = "books.html")
+
+booksHTML = html_table(html_nodes(parsedHTML,"table")[[1]])
+
+booksHTML
+```
+
+The HTML table has a few important syntax characteristics that differentiate it from the other formats:
+
+  - Tags DO NOT allow spaces.
+  - The strings stored between tags allow spaces.
+  - The strings stored between tags allow commas.
+  - The strings stored between tags allow double quotes.
+  - Column names are stored as strings.
+
+* * *
+
+##Loading XML File
+
+Loading the XML file was similar to the html file. The XML package has similar functionality to the rvest package. The code below parses the XML file using the `xmlParse` function and then transforms the parsed data into a dataframe using the `xmlToDataFrame` function. The last line displays the dataframe.
+
+```{r}
+parsedXML = xmlParse("books.xml")
+
+booksXML = xmlToDataFrame(parsedXML)
+
+booksXML
+```
+
+While the XML table may look the same as the HTML table, there are slight differences between them. For the most part, HTML and XML formats have the same syntax restrictions, however, the way that the data is stored differs between the two formats. In HTML, column names are stored as strings between tags, while in XML, column names are stored as tags. As a result, the column names of the XML dataframe cannot have spaces, while the column names of the HTML dataframe can have spaces. The syntax characteristics for XML are stated below:
+
+  - Tags DO NOT allow spaces.
+  - The strings stored between tags allow spaces.
+  - The strings stored between tags allow commas.
+  - The strings stored between tags allow double quotes.
+  - Column names are stored as tags.
+
+* * *
+
+##Loading JSON File
+
+Loading the JSON file only took one line of code, thanks to the jsonlite package. The code below reads in the JSON file and automatically interprets it as a dataframe. The last line displays the dataframe.
+
+```{r}
+booksJSON = fromJSON(txt = "books.json")$Books
+
+booksJSON
+```
+
+The JSON table is probably the most different of the three formats. The main similarity between JSON, HTML, and XML is that the data is stored in a tree format. However, JSON uses the javascript dictionary format instead of the tag format like HTML and XML. The dictionary format allows nested data to be stored very easily without having to create nested tables, like in the tag format. When translated into an R dataframe, nested elements are separated by commas when displayed.
+
+Another small difference between JSON and HTML/XML is that data elements require escape characters to display double quotes. Since JSON uses regular strings to store data, it interprets quotes inside quotes as the end of the string. To avoid this problem, escape characters are used to print quotes in strings.
+
+The syntax characteristics of JSON are stated below:
+
+  - Uses javascript dictionary notation to store data instead of tag notation.
+  - The strings stored in JSON allow spaces.
+  - The strings stored in JSON allow commas.
+  - The strings stored in JSON DO NOT allow double quotes (requires escape character).
+  - Column names are stored as strings.
+
+* * *
+
+#Comparison
+
+The following question was posed in the assignment instructions: Are the three dataframes identical?
+
+The short answer is no.
+
+The dataframes are very similar, but each format is slightly different from the other formats. HTML stores data using the tag format, where column names are stored as strings between tags, which allows column names to have spaces. XML also uses the tag format, but stores column names as tags, preventing column names from having spaces. JSON uses a javascript dictionary format, where column names and values are stored as simple strings. Simple strings allow spaces and commas, but need escape characters for double quotes. JSON also stores nested data very easily compared to HTML and XML, which require nested tables.
+
+The code below creates a function that displays the dataframes as fancy DT tables. Here you can see the slight differences between the formats.
+
+```{r}
+ShowDataFrame = function(dataframe){
+  return(DT::datatable(dataframe,options = list(pageLength = 10)))
+}
+
+ShowDataFrame(booksHTML)
+ShowDataFrame(booksXML)
+ShowDataFrame(booksJSON)
+```
+
+
+
+
+
+

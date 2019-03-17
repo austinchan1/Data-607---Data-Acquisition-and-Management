@@ -1,0 +1,20 @@
+{"Books" : [
+	{
+	"Title" : "The Moon is Down",
+	"Authors" : "John Steinbeck",
+	"Publishing Year" : 1942,
+	"Dedication Text" : "TO PAT COVICI A GREAT EDITOR AND A GREAT FRIEND"
+	},
+	{
+	"Title" : "Veterinary Guide for Farmers",
+	"Authors" : ["G. W. Stamm", "Dallas S. Burch"],
+	"Publishing Year" : 1950,
+	"Dedication Text" : "Dedicated to the GI Joes who, having fought for our nation, will now help to feed and clothe it better as a result of their \"on the farm\" training under the auspices of the Veterans Farm Training program of the United States Veterans Administration and Vocational Education leaders of the various states"
+	},
+	{
+	"Title" : "Me Talk Pretty One Day",
+	"Authors" : "David Sedaris",
+	"Publishing Year" : 2000,
+	"Dedication Text" : "For my father, Lou"
+	}
+]}

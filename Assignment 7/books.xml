@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BookList>
+   <Book>
+      <Title>The Moon is Down</Title>
+      <Authors>John Steinbeck</Authors>
+      <PublishingYear>1942</PublishingYear>
+      <DedicationText>TO PAT COVICI A GREAT EDITOR AND A GREAT FRIEND</DedicationText>
+   </Book>
+   <Book>
+      <Title>Veterinary Guide for Farmers</Title>
+      <Authors>G. W. Stamm, Dallas S. Burch</Authors>
+      <PublishingYear>1950</PublishingYear>
+      <DedicationText>Dedicated to the GI Joes who, having fought for our nation, will now help to feed and clothe it better as a result of their "on the farm" training under the auspices of the Veterans Farm Training program of the United States Veterans Administration and Vocational Education leaders of the various states</DedicationText>
+   </Book>
+   <Book>
+      <Title>Me Talk Pretty One Day</Title>
+      <Authors>David Sedaris</Authors>
+      <PublishingYear>2000</PublishingYear>
+      <DedicationText>For my father, Lou</DedicationText>
+   </Book>
+</BookList>
