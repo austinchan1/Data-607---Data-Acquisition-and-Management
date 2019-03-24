@@ -1,0 +1,297 @@
+---
+title: "Project 3 Webscraping"
+author: "Austin Chan"
+date: "March 19, 2019"
+output:
+  html_document:
+    theme: cosmo
+    toc: TRUE
+    toc_float: TRUE
+---
+
+##Loading Necessary Packages
+
+The code below loads the necessary packages to scrape the job posting data from Indeed. `RCurl`, `rvest`, and `xml2` will be used to scrape and parse the data from the web. `stringr` will be used to filter out some of the non-informative text. `dplyr`, `tidytext`, and `tidyr` will be used to tidy the data for analysis. `ggplot2` will be used to display the results.
+
+```{r,message=FALSE,warning=FALSE}
+library(RCurl)
+library(stringr)
+library(rvest)
+library(xml2)
+library(dplyr)
+library(tidytext)
+library(tidyr)
+library(ggplot2)
+```
+
+##Scraping job links
+
+In order to automate the webscraping process, I have created a couple functions that will fetch links of job postings and scrape specific elements from each job posting.
+
+###Creating the `FindJobLinks` function
+
+The function below fetches all of the job links for a given url. The function takes in a url and an xpath as input and fetches the web page as an html document. From there, the function parses the document according to the specified xpath and returns the corresponding link. Also, the function waits for 0.1 seconds to prevent my computer from bombarding the indeed server with requests.
+
+```{r}
+FindJobLinks = function(url, xpath){
+  
+  doc = xml2::read_html(url)
+  
+  jobLinks = doc %>%
+    html_nodes(xpath = xpath) %>%
+    html_attr("href")
+  
+  Sys.sleep(0.1)
+  
+  return(jobLinks)
+  
+}
+```
+
+
+###Creating the `FindXJobLinks` function
+
+The following function adds onto the previous function by allowing the user to specify how many pages of results they want to fetch from the site. This function iterates through the specified number of pages with job postings and scrapes all of the links on each page. To do this, the function first specifies the links to each of the pages. Luckily, indeed has a very straightforward url naming scheme, where the pages are separated by multiples of ten. After the page links are created, the function uses the `FindJobLinks` function to scrape all of the job links from each of the pages. For some reason, the scraped links do not include the hosting site name, so at the end of the function, I added a line that pastes the indeed.com url to each of the links before returning the output.
+
+```{r}
+FindXJobLinks = function(url,xpath,numpages = 10){
+  
+  pageLinks = paste(url,"&start=",seq(10,10 * numpages,10),sep = "")
+  
+  OutputLinks = lapply(pageLinks,function(x){
+    
+    return(FindJobLinks(x,xpath))
+    
+  })
+  
+  Output = paste("https://indeed.com",unlist(OutputLinks),sep = "")
+  
+  return(Output)
+  
+}
+
+```
+
+###Fetching the job links
+
+Now that the link fetching functions have been created, I can just run the `FindXJobLinks` function and it will automatically scrape everything I want. In the code below, I first specify the url and the xpath of the job information I am looking for. The url is the basic indeed.com url with a query for the data scientist job. The xpath specifies the path to the job title element, which contains the link to the job posting. Recently, indeed began to include "sponsored" job postings, where companies would pay money to have their job postings show up first in the search results. An unfortunate consequence of this system is that "sponsored" job postings can reappear multiple times on each subsequent page. The last line of code runs the `FindJobLinks` function and filters out repeated links.
+
+```{r}
+url = "https://www.indeed.com/jobs?q=data+scientist"
+xpath = '//*[(@data-tn-element = "jobTitle")]'
+
+joblinks = unique(FindXJobLinks(url,xpath,numpages = 10))
+```
+
+
+##Scraping job requirements
+
+After the job links have all be fetched, I can finally start scraping the job descriptions directly. In order to to do this, I have created a couple functions to make this process easier.
+
+###Creating the `FindJobDescriptions` function
+
+The function below scrapes the job description text from the webpages. This function is very similar to the job link scraping function, however, instead it fetches the text of the job description and then converts all of the words to lowercase letters.
+
+```{r}
+FindJobDescriptions = function(url, xpath){
+  
+  doc = xml2::read_html(url)
+  
+  JobDescription = doc %>%
+    html_nodes(xpath = xpath) %>%
+    html_text()
+  
+  JobDescription = tolower(JobDescription)
+  
+  
+  return(JobDescription)
+  
+}
+```
+
+###Scraping the job descriptions
+
+The code below runs the `FindJobDescriptions` function to scrape the job descriptions from indeed. The first line specifies the xpath where the job descriptions are located. The next line loops through all of the job links and scrapes the job descriptions from them. For some reason, the function names each element of the list output after the link it scraped from, which makes loading the vector much slower. Therefore, I unnamed the vector elements and unlisted the elements to make the output much cleaner.
+
+```{r}
+xpath = '//*[(@class = "jobsearch-JobComponent-description icl-u-xs-mt--md")]'
+
+jobDescriptions = sapply(joblinks, function(x) FindJobDescriptions(x, xpath))
+jobDescriptions = unname(jobDescriptions)
+jobDescriptions = unlist(jobDescriptions)
+```
+
+###Finding the job qualifications
+
+Indeed has a very loose-form job description layout. Instead of having specified sections for things like "About the company", "Qualifications", "Duties and Responsibilities", etc., Indeed job descriptions are just an empty text box that employers can put anything into in any order. As a result, the qualifications section can be anywhere in the job description and will not be named the same thing across different companies. As a result, I needed to use the `str_locate` function from the `stringr` package to find the qualifications section.
+
+The code below loops through the job descriptions and finds the location of the first mention of the job qualifications section. The regex expression in the `str_locate` function finds anything starting with a new line followed by less than 100 characters and ending with a word that indicates the qualification section will be in the next section, and then fetches everything after that word. Unfortunately, since there is not a standardized layout, this regex also fetches anything after the job qualifications, which is annoying. Luckily, the junk text can be filtered out later using stopwords. If a qualifications section cannot be found, then nothing is returned.
+
+```{r}
+qualificationsStartPosition = sapply(jobDescriptions, function(x){
+  
+  position = str_locate(x,"\n.{0,100}what you|\n.{0,100}qualifications|\n.{0,100}education|\n.{0,100}requirements|\n.{0,100}skills|\n.{0,100}experience")[1,2]
+  
+  
+  
+  if (is.na(position) == TRUE){
+    
+    position = nchar(x) - 1
+    
+  }
+  
+  qualifications = unname(substring(x,position, nchar(x)))
+  
+  return(qualifications)
+  
+  }
+)
+
+jobQualifications = unname(qualificationsStartPosition)
+```
+
+##Counting the words in the job requirements
+
+Now that all of the pages have been scraped, I can start counting the words to see which words are the most common.
+
+###Preparing the data
+
+The code below puts the job qualifications into a dataframe and specifies the stopwords to exclude from the word count. Usually when analyzing text data, there will be many words like "the", "and", "to", etc. that do not mean anything and often inflate the word counts with junk. To counteract this, I have specified a list of common stopwords and added a few of my own to filter out this junk text.
+
+```{r}
+jobQualificationsDF = data.frame(text = jobQualifications, stringsAsFactors = FALSE)
+
+EqualOpportunityStopWords = c("race","religion","color","sex","gender","sexual","orientation","age","disability","veteran","equal","employer","origin")
+
+NewStopWords = c(stop_words$word,EqualOpportunityStopWords)
+
+```
+
+###Counting single words
+
+The code below uses functions form the `tidytext` package to count each word in all the job descriptions and order them by most common to least common. The first line tokenizes the words (strips them down into their basic word roots). Tokenizing prevents words like "skill" and "skills" from being counted as two different words. The second line filters out the common stopwords so that they are not counted. The last line counts the words and displays the data.
+
+A cursory glance of these word counts seem to show that the job market values tangible, applicable skills first over the "soft", supplementary skills that are important, but not explicitly mandatory for the job. This can be seen with words like "data", "experience", "skills", "business", "analysis", and so on, which are the most common words. 
+
+```{r}
+QualificationsWords = jobQualificationsDF %>%
+  unnest_tokens(word,text)
+
+FilteredWords = QualificationsWords %>%
+  filter(!word %in% NewStopWords)
+
+WordCounts = FilteredWords %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+Top10Words = WordCounts[1:10,]
+
+ggplot(data = Top10Words, aes(x = reorder(word,n), y = n, fill = word)) + geom_bar(stat="identity") + coord_flip() + theme_minimal() + theme(legend.position = "none") + xlab("words") + ylab("word counts") + ggtitle("Word Counts of Indeed Job Postings")
+```
+
+
+
+###Counting bigrams
+
+While single word counts can be informative of the broad ideas surrounding the job postings, bigrams (phrases with two words) give a more nuanced insight into the specific phrases and skills that may not be captured in one word. The code below tokenizes the birgrams, splits the bigrams into two separate words, removes the stop words, and counts the bigrams.
+
+Looking at the bigram counts, we can already see some more specific concepts coming to light. Instead of "data" being the most common result, "machine learning" is by far the most common bigram. Bigrams like "machine learning", "data science", "computer science", "communication skills", etc. showcase the most in-demand data science skills that would not have been seen by only counting single words.
+
+```{r}
+QualificationBigrams = jobQualificationsDF %>%
+  unnest_tokens(bigram,text, token = "ngrams", n = 2)
+
+SeparatedBigrams = QualificationBigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+FilteredBigrams = SeparatedBigrams %>%
+  filter(!word1 %in% NewStopWords) %>%
+  filter(!word2 %in% NewStopWords)
+
+
+BigramCounts = FilteredBigrams %>%
+  count(word1, word2, sort = TRUE)
+```
+
+```{r}
+Top10Bigrams = BigramCounts[1:10,] %>%
+  mutate(bigram = paste(word1,word2,sep = " ")) %>%
+  select(bigram, n)
+
+ggplot(data = Top10Bigrams, aes(x = reorder(bigram,n), y = n, fill = bigram)) + geom_bar(stat="identity") + coord_flip() + theme_minimal() + theme(legend.position = "none") + xlab("bigram") + ylab("bigram counts") + ggtitle("Bigram Counts of Indeed Job Postings")
+```
+
+
+###Counting trigrams (and other n-grams)
+
+We can count to as many n-grams as we want, but there is a diminishing return on the amount of new knowledge gained the higher the n-gram goes.
+
+As n increases, the fewer instances there are of specific n-word phrases. For example, imagine the sentence:
+
+"This position requires 3 years of SQL experience." 
+
+and the sentence 
+
+"3+ years SQL experience required." 
+
+Both of these sentences say the same thing (more or less), but under the n-gram model, they would be counted as two separate phrases. As n grows larger, the count of specific phrases approaches 1 for every phrase, which ultimately makes counting n-gram higher than 3 somewhat pointless.
+
+In the following example, I count trigrams (3 words). The process is the same as counting bigrams, but instead, I use three-word phrases instead of two-word phrases.
+
+As we can see from the trigram counts, the three-word phrases are not particularly informative.
+
+```{r}
+QualificationTrigrams = jobQualificationsDF %>%
+  unnest_tokens(trigram,text, token = "ngrams", n = 3)
+
+SeparatedTrigrams = QualificationTrigrams %>%
+  separate(trigram, c("word1", "word2", "word3"), sep = " ")
+
+FilteredTrigrams = SeparatedTrigrams %>%
+  filter(!word1 %in% NewStopWords) %>%
+  filter(!word2 %in% NewStopWords) %>%
+  filter(!word3 %in% NewStopWords)
+
+
+TrigramCounts = FilteredTrigrams %>%
+  count(word1, word2, word3, sort = TRUE)
+```
+
+```{r}
+Top10Trigrams = TrigramCounts[1:10,] %>%
+  mutate(trigram = paste(word1,word2,word3,sep = " ")) %>%
+  select(trigram, n)
+
+ggplot(data = Top10Trigrams, aes(x = reorder(trigram,n), y = n, fill = trigram)) + geom_bar(stat="identity") + coord_flip() + theme_minimal() + theme(legend.position = "none") + xlab("trigram") + ylab("trigram counts") + ggtitle("Trigram Counts of Indeed Job Postings")
+```
+
+
+##Writing the word count tables to csv files
+
+The code below writes the tables to csv files for export into MySQL.
+
+```{r}
+#write.csv(WordCounts, "JobPostingWordCounts.csv", row.names = FALSE)
+#write.csv(BigramCounts, "JobPostingBigramCounts.csv", row.names = FALSE)
+#write.csv(TrigramCounts, "JobPostingsTrigramCounts.csv", row.names = FALSE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
