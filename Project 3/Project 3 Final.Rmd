@@ -1,0 +1,1427 @@
+---
+title: "Project 3: Soft Skills for Data Scientists"
+author: "Austin Chan, Michael Hayes, Stephen Jones"
+date: "March 2, 2019"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: yes
+    theme: united
+    code_folding: hide
+---
+<style type="text/css">
+h1.title {
+  color: DarkBlue;
+  font-weight: bold;
+}
+h1 { /* Header 1 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+h2 { /* Header 2 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+h3 { /* Header 3 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+h4 { /* Header 3 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+</style>
+* * *  
+#Introduction  
+
+One of the most relevant questions among aspiring data scientists is:  
+Which are the most valued data science skills?  
+Since data science is such a new field, there has not been an established dogma or list of required skills like in more established fields. Given that data science is a technological field, the landscape of required skills is changing all the time as new technologies are innovated. In order to understand what skills are necessary for a data scientist to prosper in today's job climate, we need to be part of the data science conversation.  
+What data science topics are people talking about?  
+What is being taught in data science classes?  
+Who are companies hiring for data scientist positions?  
+By seeing data science skills from the innovator, academic, and employer perspectives, we can uncover the skills that overlap every perspective to create the ideal profile of the modern data scientist.  
+
+##Motivation  
+
+Initially, one might consider asking a professor, or a data scientist in the field, or a potential employer to answer these questions. While each may have valuable insight about which skills are the most valuable, their perspectives are ultimately anecdotal evidence. As aspiring data scientists ourselves, anecdotal evidence is not rigorous enough to make a data-informed decision. Developing a survey and finding a representative sample to answer this question is expensive and tedious. Why do something by hand, when a computer can do it faster and cheaper? In order to find the most valued data science skills, we turn to the internet and use webscraping tools to find our answers.  
+
+Ultimately, we chose to use webscraping to answer this question because it is an efficient way of gathering data from the web when structured tables and toy datasets are unavailable. Given the vast wealth of information available for free on the internet, there are plenty of places we can look to answer this question.  
+For this project, we will be scraping job posting sites, data science blogs, and university catalogs to provide a full range of data across multiple sources. After scraping the data, we will compare the datasets to each other to see which skills are valued by each source.  
+
+#Approach (Methods)  
+
+##Austin Chan - Indeed  
+
+###Loading Necessary Packages  
+
+The code below loads the necessary packages to scrape the job posting data from Indeed. `RCurl`, `rvest`, and `xml2` will be used to scrape and parse the data from the web. `stringr` will be used to filter out some of the non-informative text. `dplyr`, `tidytext`, and `tidyr` will be used to tidy the data for analysis. `ggplot2` will be used to display the results.
+
+```{r,message=FALSE,warning=FALSE}
+library(RCurl)
+library(stringr)
+library(rvest)
+library(xml2)
+library(dplyr)
+library(tidytext)
+library(tidyr)
+library(ggplot2)
+```
+
+###Scraping job links  
+
+In order to automate the webscraping process, I have created a couple functions that will fetch links of job postings and scrape specific elements from each job posting.  
+
+####Creating the `FindJobLinks` function  
+
+The function below fetches all of the job links for a given url. The function takes in a url and an xpath as input and fetches the web page as an html document. From there, the function parses the document according to the specified xpath and returns the corresponding link. Also, the function waits for 0.1 seconds to prevent my computer from bombarding the indeed server with requests.
+
+```{r}
+FindJobLinks = function(url, xpath){
+  
+  doc = xml2::read_html(url)
+  
+  jobLinks = doc %>%
+    html_nodes(xpath = xpath) %>%
+    html_attr("href")
+  
+  Sys.sleep(0.1)
+  
+  return(jobLinks)
+  
+}
+```
+
+####Creating the `FindXJobLinks` function  
+The following function adds onto the previous function by allowing the user to specify how many pages of results they want to fetch from the site. This function iterates through the specified number of pages with job postings and scrapes all of the links on each page. To do this, the function first specifies the links to each of the pages. Luckily, indeed has a very straightforward url naming scheme, where the pages are separated by multiples of ten. After the page links are created, the function uses the `FindJobLinks` function to scrape all of the job links from each of the pages. For some reason, the scraped links do not include the hosting site name, so at the end of the function, I added a line that pastes the indeed.com url to each of the links before returning the output.
+
+```{r}
+FindXJobLinks = function(url,xpath,numpages = 10){
+  
+  pageLinks = paste(url,"&start=",seq(10,10 * numpages,10),sep = "")
+  
+  OutputLinks = lapply(pageLinks,function(x){
+    
+    return(FindJobLinks(x,xpath))
+    
+  })
+  
+  Output = paste("https://indeed.com",unlist(OutputLinks),sep = "")
+  
+  return(Output)
+  
+}
+```
+
+####Fetching the job links  
+
+Now that the link fetching functions have been created, I can just run the `FindXJobLinks` function and it will automatically scrape everything I want. In the code below, I first specify the url and the xpath of the job information I am looking for. The url is the basic indeed.com url with a query for the data scientist job. The xpath specifies the path to the job title element, which contains the link to the job posting. Recently, indeed began to include "sponsored" job postings, where companies would pay money to have their job postings show up first in the search results. An unfortunate consequence of this system is that "sponsored" job postings can reappear multiple times on each subsequent page. The last line of code runs the `FindJobLinks` function and filters out repeated links.
+
+```{r}
+url = "https://www.indeed.com/jobs?q=data+scientist"
+xpath = '//*[(@data-tn-element = "jobTitle")]'
+
+joblinks = unique(FindXJobLinks(url,xpath,numpages = 10))
+```
+
+###Scraping job requirements  
+
+After the job links have all be fetched, I can finally start scraping the job descriptions directly. In order to to do this, I have created a couple functions to make this process easier.  
+
+####Creating the `FindJobDescriptions` function  
+
+The function below scrapes the job description text from the webpages. This function is very similar to the job link scraping function, however, instead it fetches the text of the job description and then converts all of the words to lowercase letters.
+
+```{r}
+FindJobDescriptions = function(url, xpath){
+  
+  doc = xml2::read_html(url)
+  
+  JobDescription = doc %>%
+    html_nodes(xpath = xpath) %>%
+    html_text()
+  
+  JobDescription = tolower(JobDescription)
+  
+  
+  return(JobDescription)
+  
+}
+```
+
+####Scraping the job descriptions  
+
+
+The code below runs the `FindJobDescriptions` function to scrape the job descriptions from indeed. The first line specifies the xpath where the job descriptions are located. The next line loops through all of the job links and scrapes the job descriptions from them. For some reason, the function names each element of the list output after the link it scraped from, which makes loading the vector much slower. Therefore, I unnamed the vector elements and unlisted the elements to make the output much cleaner.
+
+```{r}
+xpath = '//*[(@class = "jobsearch-JobComponent-description icl-u-xs-mt--md")]'
+jobDescriptions = sapply(joblinks, function(x) FindJobDescriptions(x, xpath))
+jobDescriptions = unname(jobDescriptions)
+jobDescriptions = unlist(jobDescriptions)
+```
+
+####Finding the job qualifications  
+
+
+Indeed has a very loose-form job description layout. Instead of having specified sections for things like "About the company", "Qualifications", "Duties and Responsibilities", etc., Indeed job descriptions are just an empty text box that employers can put anything into in any order. As a result, the qualifications section can be anywhere in the job description and will not be named the same thing across different companies. As a result, I needed to use the `str_locate` function from the `stringr` package to find the qualifications section.
+
+The code below loops through the job descriptions and finds the location of the first mention of the job qualifications section. The regex expression in the `str_locate` function finds anything starting with a new line followed by less than 100 characters and ending with a word that indicates the qualification section will be in the next section, and then fetches everything after that word. Unfortunately, since there is not a standardized layout, this regex also fetches anything after the job qualifications, which is annoying. Luckily, the junk text can be filtered out later using stopwords. If a qualifications section cannot be found, then nothing is returned.
+
+```{r}
+qualificationsStartPosition = sapply(jobDescriptions, function(x){
+  
+  position = str_locate(x,"\n.{0,100}what you|\n.{0,100}qualifications|\n.{0,100}education|\n.{0,100}requirements|\n.{0,100}skills|\n.{0,100}experience")[1,2]
+  
+  
+  
+  if (is.na(position) == TRUE){
+    
+    position = nchar(x) - 1
+    
+  }
+  
+  qualifications = unname(substring(x,position, nchar(x)))
+  
+  return(qualifications)
+  
+  }
+)
+jobQualifications = unname(qualificationsStartPosition)
+```
+
+###Counting the words in the job requirements  
+
+
+Now that all of the pages have been scraped, I can start counting the words to see which words are the most common.
+
+####Preparing the data  
+
+
+The code below puts the job qualifications into a dataframe and specifies the stopwords to exclude from the word count. Usually when analyzing text data, there will be many words like "the", "and", "to", etc. that do not mean anything and often inflate the word counts with junk. To counteract this, I have specified a list of common stopwords and added a few of my own to filter out this junk text.
+
+```{r}
+jobQualificationsDF = data.frame(text = jobQualifications, stringsAsFactors = FALSE)
+EqualOpportunityStopWords = c("race","religion","color","sex","gender","sexual","orientation","age","disability","veteran","equal","employer","origin")
+NewStopWords = c(stop_words$word,EqualOpportunityStopWords)
+```
+
+####Counting single words  
+
+
+The code below uses functions form the `tidytext` package to count each word in all the job descriptions and order them by most common to least common. The first line tokenizes the words (strips them down into their basic word roots). Tokenizing prevents words like "skill" and "skills" from being counted as two different words. The second line filters out the common stopwords so that they are not counted. The last line counts the words and displays the data.
+
+A cursory glance of these word counts seem to show that the job market values tangible, applicable skills first over the "soft", supplementary skills that are important, but not explicitly mandatory for the job. This can be seen with words like "data", "experience", "skills", "business", "analysis", and so on, which are the most common words. 
+
+```{r}
+QualificationsWords = jobQualificationsDF %>%
+  unnest_tokens(word,text)
+FilteredWords = QualificationsWords %>%
+  filter(!word %in% NewStopWords)
+WordCounts = FilteredWords %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+Top10Words = WordCounts[1:10,]
+ggplot(data = Top10Words, aes(x = reorder(word,n), y = n, fill = word)) + geom_bar(stat="identity") + coord_flip() + theme_minimal() + theme(legend.position = "none") + xlab("words") + ylab("word counts") + ggtitle("Word Counts of Indeed Job Postings")
+```
+
+
+
+####Counting bigrams  
+
+
+While single word counts can be informative of the broad ideas surrounding the job postings, bigrams (phrases with two words) give a more nuanced insight into the specific phrases and skills that may not be captured in one word. The code below tokenizes the birgrams, splits the bigrams into two separate words, removes the stop words, and counts the bigrams.  
+
+
+Looking at the bigram counts, we can already see some more specific concepts coming to light. Instead of "data" being the most common result, "machine learning" is by far the most common bigram. Bigrams like "machine learning", "data science", "computer science", "communication skills", etc. showcase the most in-demand data science skills that would not have been seen by only counting single words.  
+
+
+```{r}
+QualificationBigrams = jobQualificationsDF %>%
+  unnest_tokens(bigram,text, token = "ngrams", n = 2)
+SeparatedBigrams = QualificationBigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+FilteredBigrams = SeparatedBigrams %>%
+  filter(!word1 %in% NewStopWords) %>%
+  filter(!word2 %in% NewStopWords)
+BigramCounts = FilteredBigrams %>%
+  count(word1, word2, sort = TRUE)
+```
+
+```{r}
+Top10Bigrams = BigramCounts[1:10,] %>%
+  mutate(bigram = paste(word1,word2,sep = " ")) %>%
+  select(bigram, n)
+ggplot(data = Top10Bigrams, aes(x = reorder(bigram,n), y = n, fill = bigram)) + geom_bar(stat="identity") + coord_flip() + theme_minimal() + theme(legend.position = "none") + xlab("bigram") + ylab("bigram counts") + ggtitle("Bigram Counts of Indeed Job Postings")
+```
+
+
+####Counting trigrams (and other n-grams)  
+
+
+We can count to as many n-grams as we want, but there is a diminishing return on the amount of new knowledge gained the higher the n-gram goes.  
+
+
+As n increases, the fewer instances there are of specific n-word phrases. For example, imagine the sentence:  
+
+
+"This position requires 3 years of SQL experience."  
+
+
+and the sentence  
+
+
+"3+ years SQL experience required."  
+
+
+Both of these sentences say the same thing (more or less), but under the n-gram model, they would be counted as two separate phrases. As n grows larger, the count of specific phrases approaches 1 for every phrase, which ultimately makes counting n-gram higher than 3 somewhat pointless.  
+
+
+In the following example, I count trigrams (3 words). The process is the same as counting bigrams, but instead, I use three-word phrases instead of two-word phrases.  
+
+
+As we can see from the trigram counts, the three-word phrases are not particularly informative.  
+
+
+```{r}
+QualificationTrigrams = jobQualificationsDF %>%
+  unnest_tokens(trigram,text, token = "ngrams", n = 3)
+SeparatedTrigrams = QualificationTrigrams %>%
+  separate(trigram, c("word1", "word2", "word3"), sep = " ")
+FilteredTrigrams = SeparatedTrigrams %>%
+  filter(!word1 %in% NewStopWords) %>%
+  filter(!word2 %in% NewStopWords) %>%
+  filter(!word3 %in% NewStopWords)
+TrigramCounts = FilteredTrigrams %>%
+  count(word1, word2, word3, sort = TRUE)
+```
+
+```{r}
+Top10Trigrams = TrigramCounts[1:10,] %>%
+  mutate(trigram = paste(word1,word2,word3,sep = " ")) %>%
+  select(trigram, n)
+ggplot(data = Top10Trigrams, aes(x = reorder(trigram,n), y = n, fill = trigram)) + geom_bar(stat="identity") + coord_flip() + theme_minimal() + theme(legend.position = "none") + xlab("trigram") + ylab("trigram counts") + ggtitle("Trigram Counts of Indeed Job Postings")
+```
+
+
+###Writing the word count tables to csv files  
+
+
+The code below writes the tables to csv files for export into MySQL.  
+
+
+```{r}
+#write.csv(WordCounts, "JobPostingWordCounts.csv", row.names = FALSE)
+#write.csv(BigramCounts, "JobPostingBigramCounts.csv", row.names = FALSE)
+#write.csv(TrigramCounts, "JobPostingsTrigramCounts.csv", row.names = FALSE)
+```  
+
+***  
+
+###Michael Hayes - Blogs  
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages('RMySQL',repos = "https://cran.rstudio.org")
+#install.packages('DBI',repos = "https://cran.rstudio.org")
+library(RMySQL)
+library(DBI)
+```
+
+###Popularity of Data Science Concepts across Blogs and Publications  
+
+
+We've identified several of the most popular data science websites, along with some popular data science *concepts* and *sectors*.  Our goal is to crawl the sites to check for popularity of these topics within the articles.  
+
+
+####Websites  
+
+
+Below is the list of websites we used:  
+
+
+  datasciencecentral.com  
+  
+  
+  smartdatacollective.com  
+  
+  
+  whatsthebigdata.com  
+  
+  
+  blog.kaggle.com  
+  
+  
+  simplystatistics.org  
+  
+  
+  
+####Concepts  
+
+
+Below is the list of *concepts* we searched for:  
+
+
+  Quantitative  
+  
+  
+  Predictive Modeling  
+  
+  
+  Personalization  
+  
+  
+  Big Data  
+  
+  
+  Data Mining  
+  
+  
+  Visualization  
+  
+  
+  Machine Learning  
+  
+  
+  Business Intelligence  
+  
+  
+  Forecast  
+  
+  
+  Deep Learning  
+  
+  
+####Sectors  
+
+
+Below is a list of the *sectors* and associated keywords we searched for:  
+
+
+  Agriculture: ("Agriculture", "Botany", "Botanical", "Farming")  
+  
+  
+  Disease: ("Disease", "Health", "Medicine", "Clinic", "Epidemiology")  
+  
+  
+  DNA: ("DNA", "Genetics", "Biology")  
+  
+  
+  Weather: ("Weather", "Climate", "Meteorology")  
+  
+  
+
+###The Process  
+
+
+The process will be as follows:  
+
+
+  Identify list of URLs for each website.  In our example we performed a top-down crawl starting at the homepage and following all links to deeper pages.  For this we used the popular web crawler "Screaming Frog" (https://www.screamingfrog.co.uk/seo-spider/).  
+  
+  
+  Count occurences of specified topics (Screaming Frog has built in search cabailities).  
+  
+  
+  Manual inspection to determine of sitewide elements (such as navigation) include the topics.  We'll have to subtract these sitewide instances from any counts in order to get a true count the appropriate URLs.  
+  
+  
+  The *# of URLs* mentioning a topic (regardless of how many times its mentioned), will be our metric of the popularity of that topic.  
+  
+  
+
+####Concepts  
+
+
+Let's load up all the data sets and start with some visualization on the DataScienceCentral Data Set:  
+
+
+```{r}
+# Helper for getting new connection to Cloud SQL
+getSqlConnection <- function() {
+  con <-dbConnect(RMySQL::MySQL(),
+                  username = 'sjones',#other ids set up are 'achan' and 'mhayes'
+                  password = 'ac.mh.sj.607',#we all can use the same password
+                  host = '35.202.129.190',#this is the IP address of the cloud instance
+                  dbname = 'softskills')
+  return(con)
+}
+connection <- getSqlConnection()
+dsc_data <- dbGetQuery(connection,"select * from blog_topics.dsc_data")
+kgl_data <- dbGetQuery(connection,"select * from blog_topics.kgl_data")
+ss_data <- dbGetQuery(connection,"select * from blog_topics.ss_data")
+sdc_data <- dbGetQuery(connection,"select * from blog_topics.sdc_data")
+wbg_data <- dbGetQuery(connection,"select * from blog_topics.wbg_data")
+#dsc_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/datasciencecentral-urls.csv")
+#kgl_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/kaggle-urls.csv")
+#ss_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/simplystatistics-urls.csv")
+#sdc_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/smartdatacollective-urls.csv")
+#wbg_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/whatsthebigdata-urls.csv")
+#head(dsc_data)
+```
+  
+Upon manual inspection we'll need to modify these counts to account for sitewide occurences.  First we check if a count is 0 (if so we won't adjust it), then we adjust appropriately.
+
+
+```{r}
+dsc_data$big_data[dsc_data$big_data > 0] <- dsc_data$big_data[dsc_data$big_data > 0] - 1
+kgl_data$forecast[kgl_data$forecast > 0] <- kgl_data$forecast[kgl_data$forecast > 0] - 3
+sdc_data$big_data <- NA
+sdc_data$business_intelligence[sdc_data$business_intelligence > 0] <- NA
+sdc_data$machine_learning[sdc_data$machine_learning > 0] <- sdc_data$machine_learning[sdc_data$machine_learning > 0] - 2
+wbg_data$data_mining[wbg_data$data_mining > 0] <- wbg_data$data_mining[wbg_data$data_mining > 0] - 1
+wbg_data$deep_learning[wbg_data$deep_learning > 0] <- wbg_data$deep_learning[wbg_data$deep_learning > 0] - 1
+wbg_data$machine_learning[wbg_data$machine_learning >0 ] <- wbg_data$machine_learning[wbg_data$machine_learning >0] - 1
+```
+
+
+Next we want to turn these values into binary values, as we only care about how many URLs mention a given topic, not how many times its mentioned in a specific URL.
+
+```{r}
+dsc_data$big_data[dsc_data$big_data > 0] <- 1
+dsc_data$business_intelligence[dsc_data$business_intelligence > 0] <- 1
+dsc_data$data_mining[dsc_data$data_mining > 0] <- 1
+dsc_data$deep_learning[dsc_data$deep_learning > 0] <- 1
+dsc_data$forecast[dsc_data$forecast > 0] <- 1
+dsc_data$machine_learning[dsc_data$machine_learning > 0] <- 1
+dsc_data$personalization[dsc_data$personalization > 0] <- 1
+dsc_data$predictive_modeling[dsc_data$predictive_modeling > 0] <- 1
+dsc_data$quantitative[dsc_data$quantitative > 0] <- 1
+ss_data$big_data[ss_data$big_data > 0] <- 1
+ss_data$business_intelligence[ss_data$business_intelligence > 0] <- 1
+ss_data$data_mining[ss_data$data_mining > 0] <- 1
+ss_data$deep_learning[ss_data$deep_learning > 0] <- 1
+ss_data$forecast[ss_data$forecast > 0] <- 1
+ss_data$machine_learning[ss_data$machine_learning > 0] <- 1
+ss_data$personalization[ss_data$personalization > 0] <- 1
+ss_data$predictive_modeling[ss_data$predictive_modeling > 0] <- 1
+ss_data$quantitative[ss_data$quantitative > 0] <- 1
+kgl_data$big_data[kgl_data$big_data > 0] <- 1
+kgl_data$business_intelligence[kgl_data$business_intelligence > 0] <- 1
+kgl_data$data_mining[kgl_data$data_mining > 0] <- 1
+kgl_data$deep_learning[kgl_data$deep_learning > 0] <- 1
+kgl_data$forecast[kgl_data$forecast > 0] <- 1
+kgl_data$machine_learning[kgl_data$machine_learning > 0] <- 1
+kgl_data$personalization[kgl_data$personalization > 0] <- 1
+kgl_data$predictive_modeling[kgl_data$predictive_modeling > 0] <- 1
+kgl_data$quantitative[kgl_data$quantitative > 0] <- 1
+sdc_data$big_data[sdc_data$big_data > 0] <- 1
+sdc_data$business_intelligence[sdc_data$business_intelligence > 0] <- 1
+sdc_data$data_mining[sdc_data$data_mining > 0] <- 1
+sdc_data$deep_learning[sdc_data$deep_learning > 0] <- 1
+sdc_data$forecast[sdc_data$forecast > 0] <- 1
+sdc_data$machine_learning[sdc_data$machine_learning > 0] <- 1
+sdc_data$personalization[sdc_data$personalization > 0] <- 1
+sdc_data$predictive_modeling[sdc_data$predictive_modeling > 0] <- 1
+sdc_data$quantitative[sdc_data$quantitative > 0] <- 1
+wbg_data$big_data[wbg_data$big_data > 0] <- 1
+wbg_data$business_intelligence[wbg_data$business_intelligence > 0] <- 1
+wbg_data$data_mining[wbg_data$data_mining > 0] <- 1
+wbg_data$deep_learning[wbg_data$deep_learning > 0] <- 1
+wbg_data$forecast[wbg_data$forecast > 0] <- 1
+wbg_data$machine_learning[wbg_data$machine_learning > 0] <- 1
+wbg_data$personalization[wbg_data$personalization > 0] <- 1
+wbg_data$predictive_modeling[wbg_data$predictive_modeling > 0] <- 1
+wbg_data$quantitative[wbg_data$quantitative > 0] <- 1
+```
+
+Now that we have binary values we can compute sums that will represent the # of URLs which those topics were found.  
+
+
+Furthermore, by dividing by the count of URLs we get a ratio, which is much more appropriate for comparing across data sets.
+
+```{r}
+dsc_sums <- c(sum(dsc_data$big_data),sum(dsc_data$business_intelligence), sum(dsc_data$data_mining), sum(dsc_data$deep_learning),sum(dsc_data$forecast), sum(dsc_data$machine_learning), sum(dsc_data$personalization), sum(dsc_data$predictive_modeling), sum(dsc_data$quantitative))/length(dsc_data$url)
+dsc_sums
+wbg_data$big_data <- as.integer(wbg_data$big_data)
+wbg_sums <- c(sum(wbg_data$big_data),sum(wbg_data$business_intelligence), sum(wbg_data$data_mining), sum(wbg_data$deep_learning),sum(wbg_data$forecast), sum(wbg_data$machine_learning), sum(wbg_data$personalization), sum(wbg_data$predictive_modeling), sum(wbg_data$quantitative))/length(wbg_data$url)
+wbg_sums
+kgl_sums <- c(sum(kgl_data$big_data),sum(kgl_data$business_intelligence), sum(kgl_data$data_mining), sum(kgl_data$deep_learning),sum(kgl_data$forecast), sum(kgl_data$machine_learning), sum(kgl_data$personalization), sum(kgl_data$predictive_modeling), sum(kgl_data$quantitative))/length(kgl_data$url)
+kgl_sums
+sdc_sums <- c(sum(sdc_data$big_data),sum(sdc_data$business_intelligence), sum(sdc_data$data_mining), sum(sdc_data$deep_learning),sum(sdc_data$forecast), sum(sdc_data$machine_learning), sum(sdc_data$personalization), sum(sdc_data$predictive_modeling), sum(sdc_data$quantitative))/length(sdc_data$url)
+sdc_sums
+ss_sums <- c(sum(ss_data$big_data),sum(ss_data$business_intelligence), sum(ss_data$data_mining), sum(ss_data$deep_learning),sum(ss_data$forecast), sum(ss_data$machine_learning), sum(ss_data$personalization), sum(ss_data$predictive_modeling), sum(ss_data$quantitative))/length(ss_data$url)
+ss_sums
+```
+
+
+
+Now let's look at some visualizations across these topics:  
+
+
+```{r}
+var_names <- c("Big Data", "Business Intelligence", "Data Mining", "Deep Learning", "Forecast", "Machine Learning", "Personalization", "Predictive Modeling", "Quantitative")
+data_df <- data.frame(var_names, dsc_sums, wbg_sums, kgl_sums, sdc_sums, ss_sums)
+data_df
+```
+
+Now that we've got all our data pulled in, its actually not tidied completely.  Let's gather and spread and get it set up correctly.  
+
+
+To get it easily visualizated via ggplot, we'll gather it up.  
+
+
+However to present it as a dataframe we'll gather and spread to transpose rows and columns.  
+
+
+
+```{r}
+data_df_gather <- tidyr::gather(data_df, var, ratio, -var_names)
+data_df <- tidyr::spread(data_df_gather, var_names, ratio)
+data_df
+ggplot(data_df_gather, aes(x = factor(var_names), y = ratio)) + facet_wrap(~var) + geom_bar(stat = 'identity', aes(fill = factor(var_names))) + theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+
+###Sectors  
+
+
+Now we take a look at a few varieties of market sectors to see how often they are mentioned on the popular data science blogs.  
+
+
+
+
+
+```{r}
+dsc_sec_data <- dbGetQuery(connection,"select * from blog_topics.dsc_sec_data")
+kgl_sec_data <- dbGetQuery(connection,"select * from blog_topics.kgl_sec_data")
+ss_sec_data <- dbGetQuery(connection,"select * from blog_topics.ss_sec_data")
+sdc_sec_data <- dbGetQuery(connection,"select * from blog_topics.sdc_sec_data")
+wbg_sec_data <- dbGetQuery(connection,"select * from blog_topics.wgb_sec_data")
+#dsc_sec_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/datascience-central-urls-sectors.csv")
+#kgl_sec_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/kaggle-urls-sectors.csv")
+#ss_sec_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/simplystatistics-urls-sectors.csv")
+#sdc_sec_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/smartdatacollective-urls-sectors.csv")
+#wbg_sec_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/whatsthebigdata-urls-sectors.csv")
+wbg_sec_data$agriculture[wbg_sec_data$agriculture > 0] <- wbg_sec_data$agriculture[wbg_sec_data$agriculture > 0] - 1
+wbg_sec_data$disease[wbg_sec_data$disease < 5] <- 0
+wbg_sec_data$dna[wbg_sec_data$dna > 0] <- wbg_sec_data$dna[wbg_sec_data$dna > 0] - 1
+dsc_sec_data$agriculture[dsc_sec_data$agriculture > 0] <- 1
+dsc_sec_data$disease[dsc_sec_data$disease > 0] <- 1
+dsc_sec_data$dna[dsc_sec_data$dna > 0] <- 1
+dsc_sec_data$weather[dsc_sec_data$weather > 0] <- 1
+ss_sec_data$agriculture[ss_sec_data$agriculture > 0] <- 1
+ss_sec_data$disease[ss_sec_data$disease > 0] <- 1
+ss_sec_data$dna[ss_sec_data$dna > 0] <- 1
+ss_sec_data$weather[ss_sec_data$weather > 0] <- 1
+kgl_sec_data$agriculture[kgl_sec_data$agriculture > 0] <- 1
+kgl_sec_data$disease[kgl_sec_data$disease > 0] <- 1
+kgl_sec_data$dna[kgl_sec_data$dna > 0] <- 1
+kgl_sec_data$weather[kgl_sec_data$weather > 0] <- 1
+sdc_sec_data$agriculture[sdc_sec_data$agriculture > 0] <- 1
+sdc_sec_data$disease[sdc_sec_data$disease > 0] <- 1
+sdc_sec_data$dna[sdc_sec_data$dna > 0] <- 1
+sdc_sec_data$weather[sdc_sec_data$weather > 0] <- 1
+wbg_sec_data$agriculture[wbg_sec_data$agriculture > 0] <- 1
+wbg_sec_data$disease[wbg_sec_data$disease > 0] <- 1
+wbg_sec_data$dna[wbg_sec_data$dna > 0] <- 1
+wbg_sec_data$weather[wbg_sec_data$weather > 0] <- 1
+dsc_sec_sums <- c(sum(dsc_data$agriculture),sum(dsc_sec_data$disease), sum(dsc_sec_data$dna), sum(dsc_sec_data$weather))/length(dsc_sec_data$url)
+dsc_sec_sums
+wbg_sec_sums <- c(sum(wbg_sec_data$agriculture),sum(wbg_sec_data$disease), sum(wbg_sec_data$dna), sum(wbg_sec_data$weather))/length(wbg_sec_data$url)
+wbg_sec_sums
+kgl_sec_sums <- c(sum(kgl_sec_data$agriculture),sum(kgl_sec_data$disease), sum(kgl_sec_data$dna), sum(kgl_sec_data$weather))/length(kgl_sec_data$url)
+kgl_sec_sums
+sdc_sec_sums <- c(sum(sdc_sec_data$agriculture),sum(sdc_sec_data$disease), sum(sdc_sec_data$dna), sum(sdc_sec_data$weather))/length(sdc_sec_data$url)
+sdc_sec_sums
+ss_sec_sums <- c(sum(ss_sec_data$agriculture),sum(ss_sec_data$disease), sum(ss_sec_data$dna), sum(ss_sec_data$weather))/length(ss_sec_data$url)
+ss_sec_sums
+sec_names <- c("Agriculture", "Disease", "DNA", "Weather")
+sec_df <- data.frame(sec_names, dsc_sec_sums, wbg_sec_sums, kgl_sec_sums, sdc_sec_sums, ss_sec_sums)
+sec_df
+sec_df_gather <- tidyr::gather(sec_df, var, ratio, -sec_names)
+sec_df <- tidyr::spread(sec_df_gather, sec_names, ratio)
+sec_df
+ggplot(sec_df_gather, aes(x = factor(sec_names), y = ratio)) + facet_wrap(~var) + geom_bar(stat = 'identity', aes(fill = factor(sec_names))) + theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+
+***  
+
+##Stephen Jones - Course Catalogs  
+
+Course catalogs were scraped to assess the most frequent terms associated with study in the field of data science. Using `rvest`,`stringr`,`tm`,`wordcloud`,`RCurl`,`data.table`,`dplyr`,`XML`, each webpage was individually scanned for links to course material, or simply scanned for descriptive text. The method evolved as each page was analyzed as institutions varied in their approach to web design. The resulting word frequencies were written to .csv and uploaded to a cloud database for querying using `DBI` and `RMySQL`.  
+
+###1. Berkeley School of Information Data Science Course Catalog  
+
+Each specific course was accessed through a link; links were obtained with the custom function `getlinks`, then filtered and cleaned. The resulting list was accessed via the custom function `scrape_pages`. The result was cleaned, scanned, converted to a corpus, scanned for stopwords and tidied further, then written to a dataframe and rendered in a word cloud to check the result.  
+
+```{r message=FALSE,warning=FALSE}
+# load packages
+library(tm)
+library(wordcloud)
+library(RCurl)
+library(data.table)
+library(XML)
+url_base<-"https://www.ischool.berkeley.edu/courses/datasci"
+#Extract link texts and urls from web page, identified by html <a href> tag.
+getlinks <- function(url){
+  linkspage <- read_html(url)#Read html
+  url_ <- linkspage %>%#Grab specific text
+    html_nodes("a") %>%
+    html_attr("href")
+  return(url_)
+}
+#create dataframe and select only the urls we want.
+just_text <- as.data.frame(lapply(url_base,getlinks))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+#continue to check and filter titles
+clean_text<-filter(just_text, grepl("/courses/",url))
+clean_text<-as.list(unique(clean_text$url))
+clean_text<-paste(url_base,clean_text)
+clean_text<-gsub(" ", "", clean_text)
+#function runs through our list of urls, grabbing text at the html tagged as <p>
+scrape_pages <- function(x){
+  tmp <- htmlParse(getURI(x))
+  tmp <- xpathSApply(tmp, '//div/p', xmlValue)#grab only text tagged '<p>'
+  return(tmp)
+}
+#activate function to scrape text
+textblock <- sapply(clean_text, scrape_pages)
+#clean and filter using gsub
+omit <- c("\n", "\t", "\r")
+textblock <- gsub(paste(omit,collapse="|"), " ", textblock)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+#lowercase is needed for stopwords to function.
+textblock <- tolower(textblock)
+require(tm)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#use function to remove stopwords.
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#set up a function list to remove punctuation, numbers, extra space, and stopwords. 
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#Use tm-map from tm
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix, omit words shorter than 3.
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df)[1]<-"frequency"
+df<-setDT(df, keep.rownames = TRUE)[]
+colnames(df)[1]<-"word"
+#order descending
+df<-df[order(-df$frequency),]
+set.seed(1973)
+wordcloud(words = df$word, freq = df$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###2. NYU, MS in Data Science  
+
+The same functions were used in much the same manner, though the list of urls needed more cleaning, eliminating many of the special interest links found on many school sites.  
+
+```{r message=FALSE,warning=FALSE}
+url_base<-"https://cds.nyu.edu/academics/ms-in-data-science/ms-courses/"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-filter(just_text, grepl("http",url))
+#.html files and github textblock will foil the function.
+clean_text<-filter(clean_text, !grepl("html|github|forms|http://nyu.edu|albert.nyu.edu|admissions|academics|our-people|twitter|facebook|medium|about|opportunities|contact|linkedin|footer",url))
+clean_text<-as.list(unique(clean_text$url))
+textblock <- sapply(clean_text, scrape_pages)
+textblock <- gsub(paste(omit,collapse="|"), " ", textblock)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df2<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df2)[1]<-"frequency"
+df2<-setDT(df2, keep.rownames = TRUE)[]
+colnames(df2)[1]<-"word"
+df2<-df2[order(-df$frequency),]
+set.seed(1973)
+wordcloud(words = df2$word, freq = df2$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###3. Columbia University Data Science Institute  
+
+As I scraped more sites I encountered errors in the scraping function; with a little research I incorporated the `tryCatch` function, which allows the `scrape_pages` function to skip errors (https://stackoverflow.com/questions/14748557/skipping-error-in-for-loop).  
+
+
+```{r message=FALSE,warning=FALSE}
+url_base<-"https://datascience.columbia.edu/course-inventory"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-filter(just_text, grepl("http",url))
+#.html files and github textblock will foil the function.
+clean_text<-filter(clean_text, !grepl("youtube|html|tumblr|github|forms|admissions|academics|twitter|facebook|medium|about|opportunities|contact|linkedin|footer",url))
+clean_text<-as.list(unique(clean_text$url))
+#added tryCatch to continue if errors are encountered, adapted from https://stackoverflow.com/questions/14748557/skipping-error-in-for-loop.
+scrape_pages <- function(x){
+  tryCatch({
+  tmp <- htmlParse(getURI(x))
+  tmp <- xpathSApply(tmp, '//div/p', xmlValue)
+  return(tmp)
+}, error=function(e){})
+}
+textblock <- sapply(clean_text, scrape_pages)
+textblock <- gsub(paste(omit,collapse="|"), " ", textblock)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df3<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df3)[1]<-"frequency"
+df3<-setDT(df3, keep.rownames = TRUE)[]
+colnames(df3)[1]<-"word"
+df3<-df3[order(-df3$frequency),]
+set.seed(1973)
+wordcloud(words = df3$word, freq = df3$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###4. Northeastern University, BS in Data Science  
+
+
+```{r message=FALSE,warning=FALSE}
+url_base<-"http://catalog.northeastern.edu/undergraduate/computer-information-science/data-science/data-science-bs/#programrequirementstext"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-filter(just_text, grepl("search",url))
+#.html files and github textblock will foil the function.
+clean_text<-filter(clean_text, !grepl("youtube|html|tumblr|github|forms|admissions|academics|twitter|facebook|medium|about|opportunities|contact|linkedin|footer",url))
+clean_text<-as.list(unique(clean_text$url))
+#add root to search popups
+clean_text<-paste(url_base,clean_text)
+clean_text<-gsub(" ", "", clean_text)
+#scrape the urls
+textblock <- sapply(clean_text, scrape_pages)
+textblock <- gsub(paste(omit,collapse="|"), " ", textblock)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df4<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df4)[1]<-"frequency"
+df4<-setDT(df4, keep.rownames = TRUE)[]
+colnames(df4)[1]<-"word"
+df4<-df4[order(-df4$frequency),]
+set.seed(1973)
+wordcloud(words = df4$word, freq = df4$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###6. Johns Hopkins Data Science
+
+```{r message=FALSE,warning=FALSE}
+url_base<-"https://ep.jhu.edu/programs-and-courses/programs/data-science#quickset-program_textblock_content_4"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-filter(just_text, grepl("programs-and-courses/",url))
+#.html files and github textblock will foil the function.
+clean_text<-filter(clean_text, !grepl("request|youtube|html|tumblr|github|forms|admissions|academics|twitter|facebook|medium|about|opportunities|contact|linkedin|footer",url))
+clean_text<-as.list(unique(clean_text$url))
+#add root to search popups
+clean_text<-paste(url_base,clean_text)
+clean_text<-gsub(" ", "", clean_text)
+#scrape
+textblock <- sapply(clean_text, scrape_pages)
+textblock <- gsub(paste(omit,collapse="|"), " ", textblock)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df5<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df5)[1]<-"frequency"
+df5<-setDT(df5, keep.rownames = TRUE)[]
+colnames(df5)[1]<-"word"
+df5<-df5[order(-df5$frequency),]
+set.seed(1973)
+wordcloud(words = df5$word, freq = df5$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###7. University of Southern California, MS Data Science  
+
+From this point each site was scanned only for text, pulling word frequecies from course and subject titles. The result, along with word clouds, are shown below. In each case the function was slightly adjusted to optimize the process.  
+
+```{r message=FALSE,warning=FALSE}
+url_base<-"http://catalogue.usc.edu/preview_program.php?catoid=6&poid=5602"
+#Alter the function to grab text or tag titles, not urls
+getlinks2 <- function(url){
+  linkspage <- read_html(url)
+  url_ <- linkspage %>%
+    html_nodes("a") %>%
+    html_text()
+  return(url_)
+  }
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df6<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df6)[1]<-"frequency"
+df6<-setDT(df6, keep.rownames = TRUE)[]
+colnames(df6)[1]<-"word"
+df6<-df6[order(-df6$frequency),]
+set.seed(1973)
+wordcloud(words = df6$word, freq = df6$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###8. New Jersey Institute of Technology, MS in Data Science
+
+```{r message=FALSE,warning=FALSE}
+url_base<-"https://catalog.njit.edu/graduate/computing-sciences/computer-science/data-science-ms/"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df7<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df7)[1]<-"frequency"
+df7<-setDT(df7, keep.rownames = TRUE)[]
+colnames(df7)[1]<-"word"
+df7<-df7[order(-df7$frequency),]
+set.seed(1973)
+wordcloud(words = df7$word, freq = df7$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###9. University of Southern California, MS Data Science
+
+```{r message=FALSE,warning=FALSE}
+url_base<-"http://catalogue.usc.edu/preview_program.php?catoid=6&poid=5602"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df8<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df8)[1]<-"frequency"
+df8<-setDT(df8, keep.rownames = TRUE)[]
+colnames(df8)[1]<-"word"
+df8<-df8[order(-df8$frequency),]
+set.seed(1973)
+wordcloud(words = df8$word, freq = df8$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###10. Stanford, MS Data Science
+
+```{r message=FALSE,warning=FALSE}
+url_base<-"https://statistics.stanford.edu/academics/ms-statistics-data-science"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df9<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df9)[1]<-"frequency"
+df9<-setDT(df9, keep.rownames = TRUE)[]
+colnames(df9)[1]<-"word"
+df9<-df9[order(-df9$frequency),]
+set.seed(1973)
+wordcloud(words = df9$word, freq = df9$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+###10 - 15. URLs from Google search result: "data science course catalog"  
+
+A google search was conducted and a root url (https://www.google.com/search?q=data%20science%20course%20catalog&start=) waas used to obtain ten pages of search results; in order to proceed, ten links were generated iteratively using a loop which appended a value to the end of the root link in multiples of ten.  The resulting list of urls--each representing a different online course catalog--resisted scraping using the previous functions, so five pages were selected and scanned individually. The result is show in the code blocks and word clouds below. The google results will change so the urls were entered individually.  
+
+
+```{r message=FALSE,warning=FALSE,results="hide"}
+urllist <- list()
+for(i in 1:10){
+  root <- "https://www.google.com/search?q=data%20science%20course%20catalog&start="
+  num <- i*10
+  name<-paste(i)
+  tmp <- list(paste0(root,num))
+  urllist[[name]] <- tmp
+}
+url.df<-t(as.data.frame(urllist))
+colnames(url.df)[1]<-"url"
+rownames(url.df)<-NULL
+#function adapted from https://stackoverflow.com/questions/32889136/how-to-get-google-search-results
+getGoogleLinks <- function(google.url) {
+   doc <- getURL(google.url, httpheader = c("User-Agent" = "R
+                                             (2.10.0)"))
+   html <- htmlTreeParse(doc, useInternalNodes = TRUE, error=function
+                          (...){})
+   nodes <- getNodeSet(html, "//h3[@class='r']//a")
+   return(sapply(nodes, function(x) x <- xmlAttrs(x)[["href"]]))
+}
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url.df,getGoogleLinks))
+#rename all columns.
+for (i in 1:ncol(just_text)){
+  colnames(just_text)[i] <- paste0("url")
+}
+#keep first column.
+just_text2<-just_text[1]
+#add columns as rows.
+for (i in 2:ncol(just_text)){
+  just_text2<-rbind(just_text2,as.vector(just_text[i]))
+  print(just_text[i])
+}
+#tidy
+just_text2$url<-as.character(trimws(just_text2$url))
+clean_text<-substring(just_text2$url,8)
+clean_text<-as.data.frame(gsub('&.*','',clean_text),stringsAsFactors = FALSE)
+colnames(clean_text)[1]<-"url"
+urlsToScrape<-clean_text
+```
+
+Now that we have a list of urls, let's scrape each of them.  
+
+
+```{r message=FALSE,warning=FALSE}
+#grab url from 2nd row and scrape; Iowa State.
+url_base<-"http://catalog.iastate.edu/collegeofliberalartsandsciences/datascience/"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df10<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df10)[1]<-"frequency"
+df10<-setDT(df10, keep.rownames = TRUE)[]
+colnames(df10)[1]<-"word"
+df10<-df10[order(-df10$frequency),]
+set.seed(1973)
+wordcloud(words = df10$word, freq = df10$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+
+```{r message=FALSE,warning=FALSE}
+#Colorado state
+url_base<-"http://catalog.colostate.edu/general-catalog/courses-az/dsci/"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df11<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df11)[1]<-"frequency"
+df11<-setDT(df11, keep.rownames = TRUE)[]
+colnames(df11)[1]<-"word"
+df11<-df11[order(-df11$frequency),]
+set.seed(1973)
+wordcloud(words = df11$word, freq = df11$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+```{r message=FALSE,warning=FALSE}
+#fairfield
+url_base<-"http://catalog.fairfield.edu/graduate/engineering/programs/applied-data-science/"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df12<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df12)[1]<-"frequency"
+df12<-setDT(df12, keep.rownames = TRUE)[]
+colnames(df12)[1]<-"word"
+df12<-df12[order(-df12$frequency),]
+set.seed(1973)
+wordcloud(words = df12$word, freq = df12$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+```{r message=FALSE,warning=FALSE}
+#Michigan
+url_base<-"https://cse.umich.edu/eecs/undergraduate/data-science/"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df13<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df13)[1]<-"frequency"
+df13<-setDT(df13, keep.rownames = TRUE)[]
+colnames(df13)[1]<-"word"
+df13<-df13[order(-df13$frequency),]
+set.seed(1973)
+wordcloud(words = df13$word, freq = df13$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+```{r message=FALSE,warning=FALSE}
+#Hawaii
+url_base<-"https://hilo.hawaii.edu/catalog/data-science-cert"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df14<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df14)[1]<-"frequency"
+df14<-setDT(df14, keep.rownames = TRUE)[]
+colnames(df14)[1]<-"word"
+df14<-df14[order(-df14$frequency),]
+set.seed(1973)
+wordcloud(words = df14$word, freq = df14$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```  
+
+```{r message=FALSE,warning=FALSE}
+#37th row
+url_base<-"http://catalogue.uci.edu/donaldbrenschoolofinformationandcomputersciences/departmentofstatistics/"
+#create data frame and review, then clean.
+just_text <- as.data.frame(lapply(url_base,getlinks2))
+colnames(just_text)[1]<-"url"
+just_text$url<-as.character(just_text$url)
+clean_text<-as.list(unique(just_text$url))
+textblock <- gsub(paste(omit,collapse="|"), " ", clean_text)
+textblock <- gsub('[[:punct:] ]+',' ',textblock)
+textblock <- gsub("[^[:alnum:] ]", "",textblock)
+textblock <- tolower(textblock)
+#convert to corpus 
+corp <- Corpus(VectorSource(textblock))
+#set function to remove stopwords
+ToOmit <- function(x) removeWords(x, stopwords("english"))
+#remove punctuation, numbers, trim and use stopwords function
+functions <- list(removePunctuation, removeNumbers, stripWhitespace, ToOmit)
+#map text blocks
+map <- tm_map(corp, FUN = tm_reduce, tmFuns = functions)
+#convert to matrix
+wordfreqs <- DocumentTermMatrix(map, control = list(wordLengths = c(3,20)))
+df15<-as.data.frame(apply(wordfreqs, 2, sum))
+colnames(df15)[1]<-"frequency"
+df15<-setDT(df15, keep.rownames = TRUE)[]
+colnames(df15)[1]<-"word"
+df15<-df15[order(-df15$frequency),]
+set.seed(1973)
+wordcloud(words = df15$word, freq = df15$frequency, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+###Compiling the data  
+
+Each of the dataframes were combined and filtered further to eliminate terms associated with institutional learning, such as "accreditation" and "instructor". A final word cloud renders the result.  
+
+```{r warning=FALSE, message=FALSE}
+master<-do.call("rbind", list(df,df2,df3,df4,df5,df6,df7,df8,df9,df10,df11,df12,df13,df14,df15))
+master<-master[order(-master$frequency),]
+master_agg<-aggregate(master$frequency, by=list(master$word), FUN=sum)
+colnames(master_agg)[1]<-"word"
+colnames(master_agg)[2]<-"frequency"
+#Let's remove some education-related words.
+EducWords<-c("waived","pdf","may","term","please","electives","waive","accreditation","program","john","year", "refer","higher","find","courses","course","admission","undergraduate","graduate","schedule","students","programs","whose","requirements","back","xxx","johns","hopkins","edu","must","required","large","beyond","list","page","wide","james","curriculum","piorkowski","waiving","additional","register","prerequisites","chair","middle","nyu","college","fax","spall","one","take","unless","park","prior","applicants","otherwise","school","gpa","jhep","fees","instructors","small","floor","north","followed","learnjhu","tty","full","added","long","toward","accredited","accrediting","jhu","university","new","york","bachelor","faculty","staff","still","can","also","charles","will","degree","replace","replaced","mids","available","upon","various","including","abet","outside","times","nation","everything","center","involving","boston","completed","street","ave","part","certificate","hours","introduction","tells","semester","state","states","admitted","include","commission","massachusetts","huntington")
+master_alt<-master_agg[-grep(paste(EducWords,collapse="|"),master_agg$word),]
+set.seed(1974)
+wordcloud(words = master_alt$word, freq = master_alt$frequency, min.freq = 100,
+          max.words=200, random.order=FALSE, rot.per=0.2, 
+          colors=brewer.pal(8, "Dark2"))
+#remove troublesome error in first row.
+catalog_words<-master_alt[-1,]
+catalog_words$frequency<-as.numeric(catalog_words$frequency)
+write.csv(catalog_words,"catalog_words.csv")
+```  
+
+#Conclusions  
+
+##Blogs  
+
+
+<b>"Machine learning" is the most popular term across the blogs we analyzed.  Not only is it the most popular term in 4/5 blogs, but it doesn't show the variability that other topics show.  
+
+
+Perhaps surprisingly the presence of the term "quantitative" brought up the rear in most of the blogs.  While of course almost everything in data science is "Quantitative", it is a curious quirk of the data that may beg further inquiry.  
+
+
+Also showing as a consistent front runner in our sectors analysis is "Disease", showing that the literature around data science and epidemiology is quite prevalent, and may make for a very lucrative career for aspiring data scientists.</b>  
+
+
+##Indeed vs. catalogs
+
+Data were downloaded from the cloud and compiled. Users were setup via a free trial on Google Cloud as recommended in the course materials.   
+
+```{r warning=FALSE,message=FALSE}
+#install.packages('RMySQL')
+#install.packages('DBI')
+library(RMySQL)
+# Load the DBI library
+library(DBI)
+# Helper for getting new connection to Cloud SQL
+getSqlConnection <- function() {
+  con <-dbConnect(RMySQL::MySQL(),
+                  username = 'achan',#other ids set up are 'achan' and 'mhayes'
+                  password = 'ac.mh.sj.607',#we all can use the same password
+                  host = '35.202.129.190',#this is the IP address of the cloud instance
+                  dbname = 'softskills')
+  return(con)
+}
+getSqlConnection2 <- function() {
+  con <-dbConnect(RMySQL::MySQL(),
+                  username = 'achan',#other ids set up are 'achan' and 'mhayes'
+                  password = 'ac.mh.sj.607',#we all can use the same password
+                  host = '35.202.129.190',#this is the IP address of the cloud instance
+                  dbname = 'job_postings')
+  return(con)
+}
+connection <- getSqlConnection()
+reqst <- dbSendQuery(connection,"select * from catalog_words")
+catalogdata <- dbFetch(reqst)
+connection2 <- getSqlConnection2()
+reqst4 <- dbSendQuery(connection2,"select * from word_counts")
+wordcountsdata <- dbFetch(reqst4)
+```
+
+Data are tidied for comparison.  
+
+
+```{r message=FALSE,warning=FALSE}
+colnames(wordcountsdata)[2]<-"frequency"
+#omit "big" and "data"
+wordcountsdata<-wordcountsdata[which(wordcountsdata$word!='big'&wordcountsdata$word!='data'&wordcountsdata$word!='e.g'&wordcountsdata$word!='5'&wordcountsdata$word!='i.e'),]
+wordcountsdata$proportion<-(wordcountsdata$frequency/(sum(wordcountsdata$frequency)))
+```  
+
+A comparison is drawn between data collected from course catalogs and job sites.  
+
+```{r message=FALSE,warning=FALSE}
+#omit "big" and "data"
+catalogdata<-catalogdata[which(catalogdata$word!='big'&catalogdata$word!='data'),]
+catalogdata$proportion<-(catalogdata$frequency/(sum(catalogdata$frequency)))
+wordcountsdata$genre<-"jobs"
+catalogdata$genre<-"catalogs"
+masterlist<-rbind(wordcountsdata,catalogdata)
+library(scales)
+library(ggplot2)
+#the following plot code is adapted from https://www.tidytextmining.com/tidytext.html
+ggplot(masterlist, aes(x = proportion, y = proportion, color = proportion)) +
+  geom_jitter(alpha = 0.2, size = 2.5, width = 0.3, height = 0.3) +
+  geom_text(aes(label = word),alpha=1, check_overlap = TRUE, vjust = 1.5, hjust= .8) +
+  scale_x_log10(labels = NULL) +
+  scale_y_log10(labels = NULL) +
+  scale_color_gradient(limits = c(0, 0.08), low = "lightblue", high = "darkblue") +
+  facet_wrap(~genre, ncol = 2) +
+  theme(legend.position="none",panel.background = element_blank()) +
+  labs(y = "proportion", x = NULL)
+```  
+
+The plots above illustrate the relative frequencies of single words yielded by our scraping. Proportions for each word were calculated by dividing the frequency of each word in each medium by the total number of selected words detected; the log of this number forms the scale of the x and y axes.  
+
+As one would expect, "experience" topped the list of most frequent words in job sites, while "engineering" topped the catalog frequency list.  
+
+How do the word frequencies of institution course catalog sites and job sites compare?  
+
+To answer the question, we'll merge by word and find the most frequent common occurrences.  
+
+```{r warning=FALSE,message=FALSE}
+compiled<-merge(wordcountsdata,catalogdata,by="word")
+compiled100<-compiled[which(compiled$frequency.x>=50&compiled$frequency.y>=50),]
+ggplot(compiled100, aes(x=word, y=frequency.x)) +
+  geom_bar(stat='identity', position='dodge')+
+theme(legend.position="none",panel.background = element_blank())+
+   labs(y = "frequency", x = NULL)+
+  ggtitle("Frequency of Common Words, Job Listings")
+ggplot(compiled100, aes(x=word, y=frequency.y)) +
+  geom_bar(stat='identity', position='dodge')+
+theme(legend.position="none",panel.background = element_blank())+
+   labs(y = "frequency", x = NULL)+
+  ggtitle("Frequency of Common Words, Course Catalogs")
+```  
+
+
+<b>According to our results, analytical and/or mathematic ability, technical fluency, creativity, and experience seem to be qualities and skills prized in data scientists. "Analysis", "applied", "calculus", and "count", common to job sites and course catalogs, imply an emphasis on math and logic. "Building", "computer", and "engineering" indicate the importance of being fluent in the creation and application of data analysis tools. "Design" and "experience" indicate the need for creativity and persistence, respectively.  
+
+
+"Engineering" dominates the course catalog word list, while "experience" dominates job listings, which indicates that a necessary quality--and possible barrier--for data scientists is experience. Job listings we scanned mentioned "analysis" and "computer" most frequently after "experience", followed by "engineering", while course catalogs mentioned "analysis" and "computer" nearly equally and slightly less frequently than "applied". This supports recent trends in job growth; jobs requiring data analysis skills are abundant. The prevalence of the term "engineering" in course catalogs suggests a possible emphasis on data systems design rather than data analysis or data science.  
+
+
+Ultimately, the skills of a data scientist will vary depending on the specific companies/academic paths/subfields that the data scientist chooses to pursue. Perhaps, there is no "perfect" data scientist. Though, across all of the sources that we scraped, there are a few general qualities that all data scientists must have in order to be successful. Data scientists should have a fundamental understanding of the technical and theoretical aspects of gathering, manipulating, and analyzing data. This encompasses things like understanding database infrastructure, being well-versed in statistical analysis, and employing the most appropriate machine learning methods to turn data into tangible outcomes. Data scientists should also have a student's mindset. This includes skills like adapting to new technologies and methods, predicting future outcomes and trends, and using scientific methods to discover new insights.  
+
+
+At the most basic level, the most important skill any data scientist can possess is to the ability to communicate and facilitate the public's understanding in the interests of knowledge and growth.</b>   
+
