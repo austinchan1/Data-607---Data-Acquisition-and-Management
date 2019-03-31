@@ -1,0 +1,123 @@
+---
+title: "Homework 9 - APIs"
+author: "Austin Chan"
+date: "March 28, 2019"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+---
+
+##Call necessary packages
+
+The package I will be using for this assignment is the `jsonlite` package. This package provides a suite of useful functions for transforming json data. This package also allows us to fetch data directly from the web, including APIs. Overall this is a very useful package for handling basic APIs.
+
+The `DT` package will be used to display the dataframes at the end.
+
+```{r,warning=F,message=F}
+library(jsonlite)
+library(DT)
+```
+
+##Set API key
+
+In order to fetch data from the New York Times API, I needed to register for an API key. The code below calls the API key from my R environment and assigns it to the variable `APIkey`.
+
+```{r}
+APIkey = Sys.getenv("APIkey")
+```
+
+##Create API querying function
+
+The API I wanted to query was the movie review API. This API includes data about movie reviews, critic recommendations, movie release date, and other information about the movies. 
+
+While it is possible to query the API directly using the `fromJSON` function, it is inconvenient to retype the url every time I want to fetch something from the API. The function below allows the user to select the specific API query options they want to use and then the function will format the url and return the query as a dataframe.
+
+```{r}
+GetMovieReviews = function(key,type = "reviews",querytype = "all",searchterm = ""){
+  
+  url = "https://api.nytimes.com/svc/movies/v2/"
+  query = paste("query=",searchterm,sep="")
+  
+  fronturl = paste(url,type,"/",querytype,".json?",sep="")
+  backurl = paste("&","api-key=",key,sep="")
+  
+  if (querytype == "search"){
+    
+    finalurl = paste(fronturl,query,backurl,sep="")
+    
+  }
+  
+  else {
+    
+    finalurl = paste(fronturl,backurl,sep="")  
+    
+  }
+  
+  finalurl = URLencode(finalurl)
+  
+  output = fromJSON(finalurl)
+  
+  return(output)
+}
+```
+
+##Using the function
+
+The function allows the user to pick the type of data they want to fetch from the API ("critics" or "reviews"), the query type ("search", "all", "picks"), and the search term. I will demonstrate a few examples below.
+
+###Search
+
+The "search" option allows the user to find a specific review by searching for a specific key word that is specified by the user. The example below searches for movie reviews containing the word "horror" in the title.
+
+```{r}
+HorrorMovieReviews = GetMovieReviews(APIkey,type = "reviews",querytype = "search", searchterm = "horror")
+```
+
+```{r}
+displayDF = function(dataframe){
+  
+  return(DT::datatable(dataframe,options = list(pageLength = 10)))
+  
+}
+
+
+displayDF(HorrorMovieReviews$results[,1:9])
+```
+
+###Critics
+
+The "critics" option allows the user to find all the critics who write movie reviews for the New York Times. The example below finds all the critics by specifying the type as "critics" and the query type as "all".
+
+```{r}
+AllCritics = GetMovieReviews(APIkey,type = "critics", querytype = "all")
+```
+
+```{r}
+displayDF(AllCritics$results[,1:5])
+```
+
+##Conclusion
+
+The New York Times API is a very convenient tool to fetch data from the New York Times. While the syntax formatting for the API is fairly straightforward, it is more convenient to create a function that streamlines the process of fetching data from the API. Thanks to the `jsonlite` library, fetching and formatting API data into dataframes has never been easier. Combining the `jsonlite` library with some string manipulation methods allowed me to make a nice function that fetches data from the New York Times movie review API very easily. I used this function to find reviews about horror movies and a full list of movie reviewers.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
