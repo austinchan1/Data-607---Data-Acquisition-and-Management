@@ -1,0 +1,282 @@
+---
+title: "Project 4 - Document Classfication"
+author: "Austin Chan"
+date: "April 2, 2019"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+---
+
+##Introduction
+
+Classification is one of the most common tasks for data scientists to perform. Many machine learning algorithms have been developed to handle this task in a variety of different ways depending on the type of data being classified and the business demands of the model. For this project, I will be classifying emails using the ham/spam dataset. I will use a variety of different machine learning algorithms including random forest, support vector machines, and extreme gradient boosting to create a model for these emails. After creating these models, I will compare their accuracy and predictive abilities and determine which of these three algorithms are best for classifying spam emails.
+
+##Loading the data
+
+Before classifying the emails, I need to transform the data into a usable form. This process involves reading in the emails, putting the emails into a dataframe, extracting the tokens, and creating a document term matrix. Afterwards, the data can be used to train some models for classfication.
+
+###Load necessary packages
+
+The packages I will be using for this project are `dplyr`, `tidytext`, `tm`, `caret`, `SnowballC`, `stringr`, and `DT`.
+
+`dplyr`, `tidytext`, and `stringr` will be used to organize and transform the raw emails into a tidy format.
+
+`tm` will be used to create the document term matrix and remove sparse terms.
+
+`caret` and `SwowballC` will be used to train machine learning algorithms on the data and assess model performance.
+
+`DT` will be used to display the data tables in a nice way.
+
+```{r,message=F,warning=F}
+library(dplyr)
+library(tidytext)
+library(tm)
+library(caret)
+library(SnowballC)
+library(stringr)
+library(DT)
+```
+
+
+###Read in files
+
+The function below reads in all the files in a specified folder as a raw text string. In this case, the emails have very long and complicated file extensions, making it very difficult to read the data in with `read.csv`. Reading in raw text is much less complicated.
+
+The function first sets the file path to the files of interest. Then, the emails are read into R and stored as a vector of strings and unnamed for save storage space. After extracting the email files, the directory returns to the previous directory.
+
+```{r}
+ReadFilesInFolder = function(path){
+  
+  setwd(path)
+  
+  filenames = list.files()
+  
+  filetext = sapply(filenames,function(x) readChar(x,file.info(x)$size))
+  
+  filetext = unname(filetext)
+  
+  setwd("..")
+  
+  return(filetext)
+}
+```
+
+###Running the read file function
+
+The code below reads in the email files and stores them into vectors.
+
+```{r}
+easyham = ReadFilesInFolder("easy_ham")
+easyham2 = ReadFilesInFolder("easy_ham_2")
+hardham = ReadFilesInFolder("hard_ham")
+spam = ReadFilesInFolder("spam")
+spam2 = ReadFilesInFolder("spam_2")
+```
+
+###Store and classify emails
+
+After reading in the emails, I put them into dataframes and assigned the appropriate label to each file. The normal emails were classified as "ham", while the spam emails were classified as "spam".
+
+```{r}
+easyham_df = tibble(text = easyham, class = "ham")
+easyham2_df = tibble(text = easyham2, class = "ham")
+hardham_df = tibble(text = hardham, class = "ham")
+spam_df = tibble(text = spam, class = "spam")
+spam_df2 = tibble(text = spam2, class = "spam")
+```
+
+###Combining the dataset into one dataframe
+
+The code below combines all the dataframes into one dataframe and assigns a unique document id to each email. At this point, the data is finally ready for text processing and transformation.
+
+
+```{r}
+hamspam_df = rbind(easyham_df,
+                   easyham2_df,
+                   hardham_df,
+                   spam_df,
+                   spam_df2) 
+
+hamspam_df = cbind(hamspam_df,DocID = seq(1,length(hamspam_df$text)))
+```
+
+##Text processing and transformation
+
+Even though the data is in a dataframe, it is still not ready for modeling yet. The data needs to be transformed into a term document matrix before it can be modeled. A term document matrix distills a set of documents into a matrix of word counts by each document. Usually this matrix is very sparse since there are a lot of possible words, and it is unlikely that each document will have a majority of words in the corpus. Term documents matrices are the form that machine learning algorithms accept for classification purposes.
+
+###Extract tokens
+
+The first step to creating a term document matrix is extracting the tokens from the documents. Tokens are the individual words of each document. The code below takes the dataframe of documents, extracts the tokens, removes normal numbers, removes stop words, and stems the remaining words into their roots. The first 100 tokens are displayed below.
+
+```{r}
+hamspam_tokens = hamspam_df %>%
+  unnest_tokens(word,text) %>%
+  filter(!str_detect(word, "^[0-9]*$")) %>%
+  anti_join(stop_words) %>%
+  mutate(word = wordStem(word))
+
+datatable(hamspam_tokens[1:100,])
+```
+
+###Create document term matrix
+
+After finding all the tokens in each document, the term document matrix can be created. The code below takes the tokens and counts the words in each document, creates the term document matrix, and removes the sparse terms from the matrix. Sparse terms need to be removed to simplify the model and to prevent overfitting. Sparse terms are words that occur in very few documents. In the code below, terms that appear in less than 10% of the documents are removed by the `removeSparseTerms` function. The 0.9 is calculated from 100% - 10% = 90%.
+
+After creating the document term matrix, the data is finally ready to be modeled.
+
+```{r}
+hamspam_dtm = hamspam_tokens %>%
+  count(DocID, word) %>%
+  cast_dtm(document = DocID, term = word, value = n) %>%
+  removeSparseTerms(sparse = 0.9)
+
+hamspam_dtm
+```
+
+
+##Modeling the data
+
+The algorithms that I will be using to classify the data are random forest, support vector machine, and extreme gradient boost. Each algorithm has classification capabilities, but vary in performance and modeling time, and of course, method of classification.
+
+###Random forest
+
+The random forest algorithm is an ensemble machine learning method that randomly samples from the data and creates decision tree models for each random sample. Afterwards, the decision trees are averaged out to create an "optimal" decision tree model, which is used to classify the text. In the following code, I experimented with a few different random forest models. I tried models with 10, 20, 30, and 100 decision trees to see which one is best. For the most part, as the number of trees increases, the prediction accuracy also increases. However, there was a diminishing return. The model with 100 decision trees was only marginally better than the model with 10 decision trees and also took significantly more time to model.
+
+The code below creates the random forest models using the `train` function from caret. The `train` function is very convenient because it trains the models, tests them, and retunes the model parameters all at once. The function takes in the document term matrix, the classes, the method parameters, and the training control specifications. The training control recalculates the model using a different training/testing split depending on the specified method and retunes the model accordingly. For these models, I used a standard bootstrap with 10 iterations, which means that the model is recreated 10 times using a different bootstrap sample each time.
+
+
+```{r}
+hamspam_randomforest10 = train(x = as.matrix(hamspam_dtm),
+                             y = factor(hamspam_df$class),
+                             method = "rf",
+                             ntree = 10,
+                             trControl = trainControl(method = "boot", number = 10))
+```
+
+
+```{r}
+hamspam_randomforest20 = train(x = as.matrix(hamspam_dtm),
+                             y = factor(hamspam_df$class),
+                             method = "rf",
+                             ntree = 20,
+                             trControl = trainControl(method = "boot", number = 10))
+```
+
+
+```{r}
+hamspam_randomforest30 = train(x = as.matrix(hamspam_dtm),
+                             y = factor(hamspam_df$class),
+                             method = "rf",
+                             ntree = 30,
+                             trControl = trainControl(method = "boot", number = 10))
+```
+
+
+```{r}
+hamspam_randomforest100 = train(x = as.matrix(hamspam_dtm),
+                             y = factor(hamspam_df$class),
+                             method = "rf",
+                             ntree = 100,
+                             trControl = trainControl(method = "boot", number = 10))
+```
+
+####Comparing the random forest models
+
+As seen in the graph below, there is not much difference between the different random forest models. The difference in accuracy and the kappa parameter for all models is within less than one percent. Given that the processing time for the 100 tree model took significantly longer than the 10 tree model, it is not worth the extra complexity and time to improve the model very slightly at the risk of overfitting.
+
+```{r}
+rf_compare = resamples(list(RF10 = hamspam_randomforest10,
+                                RF20 = hamspam_randomforest20,
+                                RF30 = hamspam_randomforest30,
+                                RF100 = hamspam_randomforest100))
+
+bwplot(rf_compare)
+```
+
+###Support vector machine
+
+The support vector machine is a machine learning algorithm that seeks to create the largest margin between distinct groups in dimensional space. The math behind it is fairly complicated and unintuitive, so I will not attempt to explain it (or claim to understand how it works). That being said, the support vector machine is very poppular as a non-linear classification method.
+
+In the code below, I use the `train` function again to train a support vector machine model to the data. For the training control, I use 10 bootstrap resamples again like with the random forest models.
+
+
+```{r}
+hamspam_svm = train(x = as.matrix(hamspam_dtm),
+                             y = factor(hamspam_df$class),
+                             method = "svmLinear3",
+                             trControl = trainControl(method = "boot", number = 10))
+```
+
+####SVM vs. Random Forest
+
+The plot below compares the accuracy and kappa parameter of the support vector machine versus the random forest. The graph shows a clear difference in the performance of the svm and the random forest. The random forest appears to be slightly more accurate and have slightly more predictive ability. 
+
+```{r}
+rfsvm_compare = resamples(list(SVM = hamspam_svm,
+                                RF100 = hamspam_randomforest100))
+
+bwplot(rfsvm_compare)
+```
+
+###Extreme Gradient Boost
+
+The extreme gradient boost is a decision tree learning method, like the random forest. However, the difference is that the gradient boost focuses on weak classifiers and iteratively improves the decision trees until it reaches an optimal model, while the random forest focsues on fully grown decision trees that are averaged out to create an optimal model. This particular gradient boosting algorithm seeks to minimize the variance of its predictions, since it cannot reduce its bias.
+
+In the code below, I use the `train` function again to train an extreme gradient boost model to the data. For the training control, I use 10 bootstrap resamples again like with the random forest models.
+
+```{r}
+hamspam_xgbDART = train(x = as.matrix(hamspam_dtm),
+                             y = factor(hamspam_df$class),
+                             method = "xgbDART",
+                             trControl = trainControl(method = "boot", number = 10))
+```
+
+
+##Comparing the models
+
+After training and testing all the different models, we can now compare them. According to the plot below, the extreme gradient boosting model is the best model overall in terms of accuracy and the kappa parameter, whereas the support vector machine is the worst. The random forest is somewhere in the middle between these two methods. For the most part, all of the algorithms had high accuracy and prediction ability, however, the extreme gradient boosting model was the best by about 1 or 2 percent. 
+
+```{r}
+models_compare = resamples(list(RF10 = hamspam_randomforest10,
+                                RF20 = hamspam_randomforest20,
+                                RF30 = hamspam_randomforest30,
+                                RF100 = hamspam_randomforest100,
+                                SVM = hamspam_svm,
+                                xgbDART = hamspam_xgbDART))
+```
+
+```{r}
+bwplot(models_compare)
+```
+
+##Conclusion
+
+Document classification can be tricky, since the data requires a lot of preprocessing and formatting before it can be thrown into a machine learning model. Modeling the data can be time consuming since there are hundreds of models to choose from, each with their own strengths and weaknesses. Even after picking the models, adjusting the hyperparameters is work within itself. Training the models can take many hours depending on the model and the result can end up with no significant difference from a faster training model that performed better. In terms of email spam classification, the extreme gradient boosting algorithm was the best overall model. While it is possible to improve the model further by tuning the hyperparameters, the incremental benefits may not be worth it for the time it takes to run the model (30+ minutes). With my own rudimentary understanding of machine learning, I was able to make a model that was over 99% accurate with high prediction power. With more powerful hardware and more knowledge of machine learning, it seems totally possible to create a model that has over 99.9% accuracy and prediction power without overfitting.
+
+We will get there in due time (hopefully).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
