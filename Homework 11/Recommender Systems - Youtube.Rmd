@@ -1,0 +1,122 @@
+---
+title: "Recommender Systems - Youtube"
+author: "Austin Chan"
+date: "April 9, 2019"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+---
+
+#Part 1 - Scenario Design
+
+Youtube's recommender system is almost entirely meant for its users (customers), so it would make sense to only do one scenario design. There are some interfaces for developers, content creators, and Google staff, however, they do not use the recommender system nearly as much as the end user (video watchers). 
+
+##Who are the target users?
+
+Youtube is so broad and accessible, it targets basically anybody with a screen that is connected to the internet. At some point, people want to watch a video for entertainment, education, news, music, or basically any other conceivable topic, and they will go to Youtube to find that video. It would be nearly impossible to find someone with an internet connection that hasn't watched a Youtube video at least once.
+
+##What are their key goals?
+
+The goal of the user is to recieve some kind of knowledge or entertainment by watching a video. The user wants to find the video they're looking for as fast as possible or they want to explore videos of a particular topic and find videos relevant to their search.
+
+##How can Youtube help the users accomplish their goals?
+
+Youtube helps users accomplish their goals by making videos easy to find, having relevant suggestions, and by designing a site layout that helps users browse videos quickly. 
+
+Youtube helps users find videos by developing a highly efficient and accurate recommender system to suggest videos to the user. Youtube's (in)famous search algorithms determines which videos come up first on the search results through a system of video selection and ranking that takes in user watching behavior, user topic interests, and user video engagement.
+
+#Part 2 - Reverse Engineering
+
+The front-facing interface for Youtube is very lightweight and simple compared to the monstrous back-end infastructure that supports all of Youtube's services.
+
+When a user visits Youtube they are greeted by a panel of videos suited specifically for their tastes. These videos will be a mix of videos that are relevant to their interests, past videos they have watched recently, and playlists of videos about topics the user has shown interest in. On the left, there is a sidebar that has tabs for trending videos, video history, and broad topics like music, sports, and gaming. These tabs will bring the user to another panel that focuses entirely on one topic and contains videos relevant to the user. At the top, there is a search bar. As the user types in words, Youtube will recommend phrases or words to guide the user in finding the video they're looking for. In short, Youtube's user interface gives the user a buffet of videos to browse through and click at their leisure. The space is full of content, but spread out enough as to not be overwhelming.
+
+Underneath this interface is quite the beast of a recommendation system.
+
+Youtube employs a combination of nearest-neighbor search algorithms, deep neural networks, and matrix factorization to select recommended videos and rank them in relevancy. The first layer of their recommendation system is a candidate generation system  that takes a user's Youtube activity history and uses matrix factorization to return a few hundred videos. This first layer takes into account different aspects about the user such as their country of origin, watching habits, topics of interest and creates a list of broadly relevant videos, that is narrowed down from millions of possible videos. The second layer is a ranking system that ranks the few hundred videos by relevancy. This ranking system uses a deep neural network and logistic regression to generate a score that aims to maximize a user's watch time. Videos are then presented to the user ranked and relevant to their tastes and desires in the moment.
+
+Youtube then tracks the user's behavior after generating the recommendation to tune their algorithms. Youtube records things like:
+
+- Which videos did the user watch?
+- How long did they watch the videos?
+- Did the user click away?
+- Did the user continue watching more videos?
+- Did the user pause the video frequently?
+- Did the user search for another video while watching a video?
+- Did the user comment on the video?
+- What did the user say in their comment?
+
+All of this data is fed back into the neural network so it can learn how to provide better recommendations to maximize watch time.
+
+The result of this system is a self-sustaining recommendation machine that recommends videos, records its users, and tunes its parameters to maximize watch time. 
+
+
+
+#Part 3 - Recommendations
+
+Google (and by extension, Youtube) has all the data it could ever need at its fingertips. Google has arguably created the best recommendation algorithms in the world and has extended its expertise to Youtube. There have been very few instances where I have been unable to find a video I was looking for on Youtube. The only recommendations I can really make would be features to the website rather than improvements to the recommendation engine.
+
+That being said, it would be nice for users to be able to create their own topic tags in addition to having the algorithm recommend topics to the user. There are times when I want to explore a very niche topic, but do not want to use the search bar because it only provides the same few videos.
+
+Allowing the user to interface more directly with the recommendation engine would be a good way to maximize customization and specification for the user.
+
+#Sources
+
+- Deep Neural Networks for YouTube Recommendations - https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/45530.pdf
+
+- Youtube's design revamp and takeaway for designers - https://uxplanet.org/youtubes-design-revamp-and-takeaway-for-designers-81377a322c3b
+
+- How YouTube Recommends Videos - https://towardsdatascience.com/how-youtube-recommends-videos-b6e003a5ab2f
+
+- Matrix factorization (recommender systems) - https://en.wikipedia.org/wiki/Matrix_factorization_(recommender_systems)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
