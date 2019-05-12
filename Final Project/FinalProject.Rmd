@@ -1,0 +1,1399 @@
+---
+title: "Twitter: Detecting Fake Followers"
+author:
+- A. Chan, M. Hayes, & S. Jones
+date: "May 10, 2019"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    gallery: no
+    highlight: tango
+    lightbox: yes
+    self_contained: yes
+  html_document:
+    code_folding: hide
+    df_print: paged
+---
+
+<style type="text/css">
+pre {
+  max-height: 150px;
+  float: left;
+  width: 100%;
+  overflow-y: auto;
+}
+pre.r {
+max-height: none;
+}
+h1.title {
+  color: DarkBlue;
+  font-weight: bold;
+}
+h1 { /* Header 1 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+h2 { /* Header 2 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+h3 { /* Header 3 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+h4 { /* Header 3 */
+  color: DarkBlue;
+  font-weight: bold;
+}
+</style>  
+
+#Introduction  
+
+Twitter has been a foundational cornerstone of modern internet culture. Founded in 2006, Twitter was a neat little app that allowed people to post messages to each other in 140 characters or less. Unlike Facebook's status updates that gave users the capability of posting multi-paragraph posts, the 140 character limit was fit for the SMS/text message style of communication. Given that most internet users are familiar with texting, Twitter gave people a platform to broadcast their texts across the entire internet, creating a vibrant network of tweets and interactions between people all across the world.  
+
+
+Given that Twitter has such broad mainstream appeal and ease of use, users and companies have tried to cash in on the free publicity goldmine that Twitter provided. In order to gain publicity and clout on Twitter, a user must maximize outside engagement with their profile. Engagement comes in the following flavors: 
+
+
++ Followers - The number of people who are notified every time you send a tweet.
++ Likes - The number of people who clicked the little heart button on your tweet.
++ Retweets - The number of times your tweet was reposted by someone else.
++ Comments - The number of comments your tweet received.  
+
+
+The number of likes, retweets, and comments are usually indicative of a popular, relevant, or relatable tweet and can vary wildly between posts. As a result, these forms of engagement are not indicative of the baseline popularity of a particular user. On Twitter, the gold-standard of popularity is followers. Followers go beyond the basic one-time interaction of likes, retweets, and comments; they persist across every tweet a user makes. Essentially, followers are a dedicated audience a user can broadcast to whenever they want. The more followers a user has, the more power they have to share their opinions, start a conversation, or mobilize action towards a specific goal.  
+
+
+Given that followers are crucial towards success on Twitter, some users have resorted to artificially inflating their follower counts to seem more important or influential. Users can hire companies to create fake follower accounts that automatically follow the user and engage with their tweets. Since tweets with high engagement are more visible to the general user base, these users can have a higher chance of attracting real followers and cultivating an audience compared to users who do not purchase followers.  
+
+
+Applying concepts learned this semester, we decided to develop a model to identify these fake followers on Twitter. Making use of Twitter API and publicly available fake follower databases online, we will aggregate the tweets into a corpus and partition the corpus into datasets for training and testing.  
+
+
+Exploratory analysis and research indicates that fake followers can be identified by data accessible via API; number of followers, number of followed accounts, length and development of user bio can all identify fake followers, as well as the use of "hashtags, `@`-mentions, and capital letters" in the user's last tweets. Profile pictures can also be considered indicators of a profile's authenticity.  
+
+
+Additionally, sample bot data can be found at https://twitter.com/shiffman/lists/bots; these data can be used to develop a prototype which can be expanded upon in our corpus development.  
+
+
+The goal of this project is to create a functioning fake follower detector that can take in any twitter user and predict whether or not they are a fake follower. We can use this information to determine how much activity and influence fake followers have over Twitter.  
+
+
+##Acquiring the data:  
+
+
+###Data Source 1: Fake Follower Database  
+
+
+Our first data source comes from Cresci's 2017 spambot repository. This repository contains a large collection of accounts and tweets that have been verified as bots. The repository also contains a list of genuine accounts operated by real people. The bots are categorized by purpose, which can range from advertisement, scams, spam, retweeting, and following. This dataset has been used to develop research on the evolution of spambots over time in Cresci et. al.'s research paper on the topic. (https://dl.acm.org/citation.cfm?doid=3041021.3055135)  
+
+
+For our project, we are interested in the follower bots, or accounts that were created specifically to boost the follower count of specific users. We are planning to use this dataset to train our fake follower detector.  
+
+
+###Data Source 2: Twitter API  
+
+
+Our second data source comes directly from Twitter itself using Twitter's API. The Twitter API allows us to access public Twitter account data and fetch a variety of useful statistics regarding user engagement and activity. The API also has the added benefit of fetching tweets by time period, which means that the data we use will be as new as possible. By having a mix of older data and newer data, we can build a fake follower detector that is robust to the changing social landscape of Twitter.  
+
+
+##Approach/Overview:  
+
+
+###Our project will have the following workflow:  
+
+
+First, we will upload the data to a cloud database so that the data is accessible to all group members and anyone who wants to reproduce the code. We will be using Google Cloud's MySQL database server to store our data.  
+
+
+Second, we will transform and clean the data. Since Twitter is based on an SMS text system, there are many non-standard characters that need to be removed, transformed, or standardized before being used to build the models.  
+
+
+Third, we will each build a set of models using the caret package to predict whether a user is a fake follower or not. The caret package contains a set of useful functions that help with building, training, and testing machine learning models. This package is a more modern alternative to the Rtexttools package that has been deprecated since the writing of the Automated Data Collection with R textbook. The caret package was not covered in class, so we think it would be a good addition to our analysis for people who are interested in machine learning with R.  
+
+The models will be broken down into two approaches:  
+
+
+The first set of models will only use tweets to predict whether a user is a fake follower or not. We hypothesize that bots have different tweeting vocabulary compared to normal twitter users and that this difference can be used to distinguish bots from real users. Some models will be trained using data exclusively from Cresci's spambot repository, while other models will be trained using a mixture of Cresci's bots and the API data. We are curious if these different spambot sets will yield different and interesting results.  
+
+
+The second set of models will use user profile data to predict whether a user is a fake follower or not. These models will take into account various statistics like status count, follower count, friends count, and other data to see if they are correlated with fake follower behavior. These models will be more in line with a traditional statistics approach to the fake follower problem.  
+
+
+Lastly, we will compare the results from our models to see which models were the best for this task. We want to compare the tweets of users classified as fake followers to the tweets of users classified as real followers to see if there are any discernible patterns in fake follower behavior.  
+
+
+We hope to find a common element among most Twitter fake followers so that bot detection algorithms can be improved in the future.  
+
+#Approach 1.1 - Tweet Text  
+
+Our first approach involves using only tweet text to predict if a user is a fake follower or not. Most of the models in this section are exploratory. We wanted to see if the text itself was informative enough to build a robust machine learning model to predict fake followers.  
+
+
+This approach was implemented by evaluating the text of each tweet. Each response in the dataset defined one tweet, the text of which was sorted into tokens; word frequency formed the basis of analysis.  
+
+After formatting the data, we used a variety of different machine learning models to try and predict whether a user was a fake follower based on their tweets.  
+
+
+##Data - Archive  
+
+The first step towards creating these models is to load the data into the MySQL cloud database. Loading the data into the database allows us to access the data from anywhere and ensures that we are all using the same data in the same format for our analysis. The main data sources we used for this approach was Cresci's spambot repository and the Twitter API.  
+
+
+The two archived data files selected for analysis are located on the Bot Repository website (https://botometer.iuni.iu.edu/bot-repository/datasets.html). Files marked as "fake followers" and "genuine accounts" were combined to form a dataset with 20,000 cases, 50% of which were marked as "fake followers".  
+
+###Loading necessary packages  
+
+
+To begin, the following packages are loaded: `tidyverse`, `tidytext`, `stringr`, `caret`, `tm`, `data.table`, `tidyr`, `diplyr`, `SnowballC`, `xgboost`, `Matrix`, and `textclean`. Other packages were loaded later in this markdown as they were needed.  
+ 
+
+```{r message=FALSE,warning=FALSE}
+
+rm(list=ls())
+
+library(tidyverse)
+library(tidytext)
+library(stringr)
+library(caret)
+library(tm)
+library(data.table)
+library(tidyr)
+library(dplyr)
+library(SnowballC)
+library(xgboost)
+library(Matrix)
+
+#use textclean to remove non-ASCII characters from tweet texts
+library(textclean)
+
+```
+
+###Cleaning the tweets  
+
+
+Tweets of fake followers and genuine accounts are loaded separately as simple text files, then combined for cleaning. User IDs do not correspond directly to user csv which accompanied the files. Preliminary cleaning removes non-ASCII characters with package `textclean`; `gsub` command allows the sample to be curated further.  
+
+
+
+```{r message=FALSE,warning=FALSE,eval=FALSE}
+
+fakeR<-fread('C:/MSDS/fake_followers.csv/tweets.csv',stringsAsFactors = FALSE,header = T, sep = ',')
+genuineR<-fread("C:/MSDS/genuine_accounts.csv/tweets2.csv",stringsAsFactors = FALSE,header = T, sep = ',')
+
+fakeR<-fakeR[,3]
+genuineR<-genuineR[,2]
+
+#remove all character clusters without at least one vowel
+fakeR$text<-sapply(str_extract_all(fakeR$text,"(\\S*[AEIOUaeiou]+\\S*)"),toString)
+fakeR$text<-gsub(","," ",fakeR$text)
+
+#omit words with colons
+fakeR$text<-gsub("\\S*:\\S*","",fakeR$text)
+
+#remove special characters by replacing with apostrophe, then removing apostrophe
+fakeR$text<-gsub("[^0-9A-Za-z///' ]","'" , fakeR$text,ignore.case = TRUE)
+fakeR$text <- gsub("'","" , fakeR$text,ignore.case = TRUE)
+
+#remove non-ASCII characters
+fakeR$text<-replace_non_ascii(fakeR$text,'')
+#remove observations which contain no words, eliminated by last three lines of code
+fakeR<-fakeR[which(fakeR$text!=''),]
+
+fakeR$fake<-1
+
+#remove all character clusters without at least one vowel
+genuineR$text<-sapply(str_extract_all(genuineR$text,"(\\S*[AEIOUaeiou]+\\S*)"),toString)
+genuineR$text<-gsub(","," ",genuineR$text)
+
+#omit words with colons
+genuineR$text<-gsub("\\S*:\\S*","",genuineR$text)
+
+#remove special characters by replacing with apostrophe, then removing apostrophe
+genuineR$text<-gsub("[^0-9A-Za-z///' ]","'" , genuineR$text,ignore.case = TRUE)
+genuineR$text <- gsub("'","" , genuineR$text,ignore.case = TRUE)
+
+#remove non-ASCII characters
+genuineR$text<-replace_non_ascii(genuineR$text,'')
+#remove observations which contain no words, eliminated by last three lines of code
+genuineR<-genuineR[which(genuineR$text!=''),]
+
+genuineR$fake<-0
+
+set.seed(1973)
+fake<-fakeR[sample(nrow(fakeR),10000), ] 
+
+set.seed(1974)
+genuine<-genuineR[sample(nrow(genuineR),10000), ] 
+
+rm(fakeR)
+rm(genuineR)
+
+tweets <- data.frame(rbind(fake,genuine),
+                  stringsAsFactors=FALSE)
+
+tweets$text<-str_trim(tweets$text)
+
+#set seed to maintain random sample consistency; make 50-50 split
+set.seed(1975)
+rownums<-sample(nrow(tweets),nrow(tweets)*.5)
+
+#form training set and test set
+trainSet<-tweets[rownums,]
+trainSet_t<-trainSet[,1:ncol(trainSet)-1]
+testSet<-tweets[-rownums,]
+testSet_t<-testSet[,1:ncol(testSet)-1]
+
+write.csv(trainSet,"C:/MSDS/FinalProject607/trainSet.csv",row.names=FALSE)
+write.csv(testSet,"C:/MSDS/FinalProject607/testSet.csv",row.names=FALSE)
+
+```
+
+###Uploading the data to the cloud / Loading data into R  
+
+
+After performing preliminary cleaning on the data, the datasets were uploaded to github. Uploading the data to github allows other users who wish to reproduce our analysis an easy way to access the data without having to interface with private databases or flat files.  
+
+
+The `testSet` and `trainSet` files were uploaded to GitHub and a cloud database here:  
+
+
+https://raw.githubusercontent.com/sigmasigmaiota/FinalProject607/master/testSet.csv
+
+https://raw.githubusercontent.com/sigmasigmaiota/FinalProject607/master/trainSet.csv  
+
+
+The cloud database instance was created by taking advantage of Google's free trial. The password and ID for the instance is contained in a hidden code chunk.  
+
+
+
+
+```{r message=FALSE,warning=FALSE,echo=FALSE}
+
+#set password and username for DB query
+pw<-"ac.mh.sj.607"
+id<-"root"
+
+```  
+
+Queries are created and the data are imported.  
+
+```{r warning=FALSE,message=FALSE}
+
+# Load the RMySQL and DBI libraries
+library(RMySQL)
+library(DBI)
+
+#Set MySQL connection parameters
+getSqlConnection <- function() {
+  con <-dbConnect(RMySQL::MySQL(),
+                  username = id, #other ids set up are 'achan' and 'mhayes'
+                  password = pw, #we all can use the same password
+                  host = '35.202.129.190', #this is the IP address of the cloud instance
+                  dbname = 'tweets')
+  return(con)
+}
+
+connection <- getSqlConnection()
+reqst <- dbSendQuery(connection,"select * from tweets.trainSet")
+trainSet_orig <- dbFetch(reqst, n=-1)
+
+```
+
+##Corpus Processing  
+
+After the preliminary cleaning has been finished, the text is ready for corpus processing.  
+
+In the code below, the row names are captured with the package `data.table`; slow and methodical cleaning follows. While this can be accomplished with fewer lines of code, the result was checked after each step. Ultimately a list of single-word tokens is developed for each document. Training sets and testing sets are recombined for simultaneous cleaning.  
+
+```{r message=FALSE,warning=FALSE}
+
+reqst2 <- dbSendQuery(connection,"select * from tweets.testSet")
+testSet_orig <- dbFetch(reqst2,n=-1)
+
+trainSet_orig$train<-1
+testSet_orig$train<-0
+
+master<-as.data.frame(rbind(trainSet_orig,testSet_orig))
+
+```
+
+With the master dataset created and testing and training members marked with an indicator variable, we convert to a tibble.  
+
+```{r message=FALSE,warning=FALSE,include=FALSE}
+
+setDT(master, keep.rownames = TRUE)[]
+colnames(master)[1]<-"ID"
+
+#convert to tibble
+master_t<-as_tibble(master)
+
+```
+
+###Filtering and tokenizing the corpus  
+
+
+Given that twitter is not like most other text mediums, it requires special text processing. Tweets often resemble text messages, which include shorthand, incomplete sentences, misspellings, and other text message-related problems.  The code below filters out url links and random numbers from the tweets to reduce the number of sparse terms in the corpus.  
+
+
+Tokens are created by filtering out undesirable characters and patterns within the text of each tweet.  
+ 
+
+
+```{r message=FALSE,warning=FALSE}
+
+#create token list
+master_tokens <- master_t %>%
+  unnest_tokens(output = word, input = text) %>%
+  #remove numbers, other shorter words, special characters,etc
+  filter(!str_detect(word, "^\\b[[:alpha:]]{11,}\\b$")) %>%
+  filter(!str_detect(word, "^[0-9]*$")) %>%
+  filter(!str_detect(word, "^[0-9]*[.][0-9]*$")) %>%
+  filter(!str_detect(word, "^[_]*$")) %>%
+  filter(!str_detect(word, "^\\w*[0-9]+\\w*\\s*$")) %>%
+  filter(!str_detect(word, "^[0-9]*[,][0-9]*$")) %>%
+  filter(!str_detect(word, "^[0-9]*[,][0-9]*[,][0-9]*$")) %>%
+  filter(!str_detect(word, "^[0-9]*[.][0-9]*[.][0-9]*$")) %>%
+  filter(!str_detect(word, "^[a-zA-Z0-9_]*[.][a-zA-Z0-9_]*$")) %>%
+  filter(!str_detect(word, "^[0-9]*[.][0-9]*[.][0-9]*[.][0-9]*$")) %>%
+  filter(!str_detect(word, "^[a-z]*[:][a-z]*$")) %>%
+  filter(!str_detect(word, "^?(.*)[.][a-z]+")) %>%
+  filter(!str_detect(word, "^\\b\\w{1,4}\\b$")) %>%
+  #filter(!word %in% omit) %>%
+  #stop words
+  anti_join(stop_words)%>%
+  #stemming
+  mutate(word = SnowballC::wordStem(word))%>%
+  #remove more words
+  filter(!str_detect(word, "\\b.*rageofbahamut.*\\b"))%>%
+  filter(!str_detect(word, "\\b.*tefftharipp.*\\b"))%>%
+  filter(!str_detect(word, "\\b.*mai.*\\b"))%>%
+  filter(!str_detect(word, "\\b.*meu.*\\b"))%>%
+  filter(!str_detect(word, "\\b.*uma.*\\b"))%>%
+  filter(!str_detect(word, "\\b.*boa.*\\b"))%>%
+  filter(!str_detect(word, "\\b.*een.*\\b"))%>%
+  filter(!str_detect(word, "\\b.*het.*\\b"))%>%
+  filter(!str_detect(word, "\\b.*vai.*\\b"))
+
+#create vector of IDs with fake/geniune status
+IDfake<-master_tokens[!duplicated(master_tokens[,c('ID')]),]
+
+
+```  
+
+###Creating the document term matrix  
+
+
+After the links and numbers have been filtered out, a document-term matrix is created. Sparse terms are eliminated with `removeSparseTerms` function. The weighting option is set to term frequency-inverse document frequency, which increases with frequency per document, but is adjusted for prevalence in all documents in the analysis.  
+ 
+
+```{r message=FALSE,warning=FALSE}
+
+master_tokens %>%
+  #get count
+  count(ID, word) %>%
+  #document term matrix created with tf-idf
+  cast_dtm(document = ID, term = word, value = n,
+           weighting = tm::weightTfIdf)
+
+master_dtm <- master_tokens %>%
+   count(ID,word) %>%
+   cast_dtm(document=ID,term = word, value = n)
+
+
+#omit sparse words
+tweetNoSparse_dtm <- removeSparseTerms(master_dtm, sparse = .995)
+
+
+```  
+
+###Visualizing the processed data  
+
+
+Word frequencies are plotted for both the fake and genuine tweets (<i>group by fake = 0,1</i>).  
+
+From the graphs below, we can see that genuine and fake tweets have different vocabularies. It appears that many of the bots are from non-English speaking countries given that most of the words are not in English. Hopefully, the machine learning models can pick up on these discrepancies and identify the tweets correctly.  
+
+
+```{r message=FALSE,warning=FALSE,fig.align="center"}
+
+master_tfidf <- master_tokens %>%
+   count(fake, word) %>%
+   bind_tf_idf(term = word, document = fake, n = n)
+
+
+#sort, convert to factor
+plot_tweet <- master_tfidf %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word))))
+
+#plot 10 most frequent spam and ham tokens
+plot_tweet %>%
+  filter(fake %in% c(0, 1)) %>%
+  mutate(fake = factor(fake, levels = c(0, 1),
+                        labels = c("genuine", "fake"))) %>%
+  group_by(fake) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  ggplot(aes(word, tf_idf)) +
+  geom_col() +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~fake, scales = "free") +
+  coord_flip()
+
+```  
+
+##Model building  
+
+
+Now that the corpus has been processed, the data is now ready to be used to build the machine learning models. The first step in model building is to specify a training and testing data split. This split determines which tweets will be used to build the model and which tweets will be used to measure whether the model is useful/robust.  
+
+
+In the code below, the matrix is converted to a dataframe; a seed is set and a random selection of cases form the training dataset and the testing dataset. A random sample of 50% of the documents forms the training set with the remaining rows designated for testing the model. Fake follower classification variables are separated from the training and testing datasets.  
+
+
+```{r message=FALSE,warning=FALSE}
+
+#form data frame with cleaned tokens and indicator variable
+CleanTweet<-data.frame(as.matrix(tweetNoSparse_dtm),IDfake$fake,IDfake$train)
+
+#form training set and test set
+trainSet<-CleanTweet[which(CleanTweet$IDfake.train==1),]
+trainSet_Pre<-trainSet[,-which(names(trainSet) %in% c('IDfake.fake','IDfake.train'))]
+testSet<-CleanTweet[which(CleanTweet$IDfake.train==0),]
+testSet_Pre<-testSet[,-which(names(trainSet) %in% c('IDfake.fake','IDfake.train'))]
+
+```  
+
+
+###Model 1 - Random Forest  
+
+The first model was created using the Random Forest algorithm, with `ntrees` set to 50. Additionally, out-of-bag estimate (`oob`) is set as the method of `trainControl` with other options left to their default settings.  
+
+
+```{r message=FALSE,warning=FALSE}
+
+#train by comparing dataframe to spam indicator
+model1 <- train(x = trainSet_Pre,
+                     y = factor(trainSet$IDfake.fake),
+                     method = "rf",
+                     ntree = 100,
+                     trControl = trainControl(method = "oob"))
+
+
+#view result
+model1$finalModel
+ 
+
+```  
+
+####Testing the random forest  
+
+`testSet` is prepared for a model test; accuracy is calculated.  
+
+
+```{r message=FALSE,warning=FALSE}
+
+#test model
+predictions<-predict(model1,newdata = testSet_Pre)
+
+#calculate accuracy
+compare<-data.frame(testSet$IDfake.fake,predictions)
+compare$correct<-ifelse(compare$testSet.IDfake.fake == compare$predictions,1,0)
+accuracy<-round(sum(compare$correct)*100/nrow(compare),1)
+
+cat("Accuracy:",accuracy,"%")
+
+```  
+
+With accuracy at 50.2% we can conclude that the model is not accurate, probably due to the sparsity of document terms; there is too little overlap in the tweets as they have been cleaned. It is incredibly likely that there are few words in common among all tweets in this dataset.  
+
+
+####Importance  
+
+Evaluating term importance can help expose terms that can be removed. Below, the importance of terms are plotted with an arbitrary lower limit; further data cleaning is performed if necessary and the model trained again.  
+
+```{r message=FALSE,warning=FALSE,fig.align='center'}
+
+#grab importance via varImp
+imp<-varImp(model1,scale=FALSE)
+
+imp2<-data.frame(imp["importance"])
+setDT(imp2, keep.rownames = TRUE)[]
+imp2<-imp2[which(imp2$Overall>.9),]
+colnames(imp2)[1]<-"word"
+colnames(imp2)[2]<-"importance"
+
+ggplot(imp2, aes(x=reorder(word, importance), weight=importance, fill=as.factor(importance)))+
+  geom_bar()+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(legend.position = "none") 
+
+```  
+
+It is likely that the sparsity of our data will result in unsuccessful models; term importance will not remedy sparsity.  
+
+
+###Model 2 - Stochastic Gradient Boosting  
+
+In order to train a model with the method `gbm` we loaded the package of the same name. The `trainControl` method is set as `cv`, `number` of folds is set to `3`, `classProbs` is set to `TRUE` and `summaryFunction` set as `twoClassSummary`. Since the classification of spam vs ham is a two-class problem, we use `metric="ROC"` in the `train` function; according to documentation, `caret` will calculate the area under the ROC metric only for 2-class models.  
+
+
+```{r message=FALSE,warning=FALSE,fig.align='center'}
+
+library('gbm')
+
+#recode fake indicator variable
+trainSet$IDfake.fake<-ifelse(trainSet$IDfake.fake==1,"fake","genuine")
+testSet$IDfake.fake<-ifelse(testSet$IDfake.fake==1,"fake","genuine")
+
+ctrl <- trainControl(method='cv',
+                     number=3,
+                     returnResamp='none',
+                     summaryFunction = twoClassSummary, 
+                     classProbs = TRUE)
+
+model2 <- train(x = trainSet_Pre,
+                y = factor(trainSet$IDfake.fake),
+                method='gbm',
+                trControl=ctrl,
+                metric = "ROC",
+                preProc = c("center", "scale"))
+
+summary(model2)
+
+print(model2)
+
+```  
+
+####Evaluating the model  
+
+The code below gets the "raw" probability and calculates accuracy.  
+
+```{r message=FALSE,warning=FALSE}
+
+#use another method to get accuracy, confirm with process before.
+predictions2 <- predict(object=model2, testSet_Pre, type='raw')
+
+print(postResample(pred=predictions2, obs=as.factor(testSet$IDfake.fake)))
+
+#calculate accuracy using a second method to confirm
+compare2<-data.frame(testSet$IDfake.fake,predictions2)
+compare2$correct<-ifelse(compare2$testSet.IDfake.fake == compare2$predictions,1,0)
+accuracy2<-round(sum(compare2$correct)*100/nrow(compare2),1)
+
+cat("Accuracy confirmed:",accuracy2,"%")
+
+```  
+
+This model is less accurate than the one before it; with accuracy at 49.5% we are moving in the wrong direction.  
+
+####Receiver Operating Characteristics Curve (ROC)  
+
+The following code chunk calculates AUC (area under the curve) score using the package `pROC`. According to https://developers.google.com/machine-learning/crash-course/classification/roc-and-auc:  
+"AUC ranges in value from 0 to 1. A model whose predictions are 100% wrong has an AUC of 0.0; one whose predictions are 100% correct has an AUC of 1.0."  
+
+In simplest terms, it is a measure of model performance. Using the package `pROC` we calculated AUC for the second model below using class probabilities from training.  
+
+
+```{r message=FALSE,warning=FALSE}
+
+#obtain probabilities
+predictions2b <- predict(object=model2, testSet_Pre, type='prob')
+
+library(pROC)
+
+#get AUC score "AUC ranges between 0.5 and 1, where 0.5 is random and 1 is perfect" from https://amunategui.github.io/binary-outcome-modeling/
+auc <- roc(ifelse(testSet$IDfake.fake=="fake",1,0), predictions2b[[2]])
+print(auc$auc)
+
+
+```  
+
+As expected, our success rate is confirmed as abysmal with the area under the curve at 49.7%.  
+
+
+Just for fun we can plot the importance of each term allows for refinement in cleaning; the most important terms are scrutinized for authenticity. 
+ 
+
+```{r message=FALSE,warning=FALSE,fig.align='center'}
+
+#grab importance via varImp
+imp<-varImp(model2,scale=FALSE)
+
+imp2<-data.frame(imp["importance"])
+setDT(imp2, keep.rownames = TRUE)[]
+imp2<-imp2[which(imp2$Overall>1.2),]
+colnames(imp2)[1]<-"word"
+colnames(imp2)[2]<-"importance"
+
+ggplot(imp2, aes(x=reorder(word, importance), weight=importance, fill=as.factor(importance)))+
+  geom_bar()+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme(legend.position = "none") 
+
+```  
+
+Even though the model is unsuccessful this plot represents some of the most common terms that appear; it is apparent that these terms, deemed highest in importance, do not occur frequently in the data.  
+
+Let's try another model.  
+
+
+###Model 3 - Extreme Gradient Boosting  
+
+This model, using the package `XGBoost`, is deemed more efficient by most online estimates. Different parameters should be adjusted to optimize the model, but given the success of prior models and the sparsity of our data, the chances of good model fit are not good.  
+
+The package necessitates additional cleaning and formatting; the `	sparse.model.matrix` command is used to convert categorical variables into numeric vectors, necessary for model function.  
+
+
+```{r message=FALSE,warning=FALSE}
+
+library(xgboost)
+library(Matrix)
+library(ROCR)
+
+#recode fake indicator variable again
+trainSet$IDfake.fake1<-ifelse(trainSet$IDfake.fake=="fake",1,0)
+testSet$IDfake.fake1<-ifelse(testSet$IDfake.fake=="fake",1,0)
+
+trainSet_P<-trainSet[,-which(names(trainSet) %in% c("IDfake.train","IDfake.fake"))]
+testSet_P<-testSet[,-which(names(testSet) %in% c("IDfake.train","IDfake.fake"))]
+
+trainSet<-trainSet[,-which(names(trainSet) %in% c("IDfake.fake"))]
+testSet<-testSet[,-which(names(testSet) %in% c("IDfake.fake"))]
+
+colnames(trainSet_P)[colnames(trainSet_P)=="IDfake.fake1"]<-"IDfake.fake"
+colnames(testSet_P)[colnames(testSet_P)=="IDfake.fake1"]<-"IDfake.fake"
+
+colnames(trainSet)[colnames(trainSet)=="IDfake.fake1"]<-"IDfake.fake"
+colnames(testSet)[colnames(testSet)=="IDfake.fake1"]<-"IDfake.fake"
+
+X_train_test <- sparse.model.matrix(IDfake.fake~.-1, data = rbind(testSet_P, trainSet_P))
+n1 <- nrow(trainSet_P)
+n2 <- nrow(testSet_P)
+X_train <- X_train_test[1:n1,]
+X_test <- X_train_test[(n1+1):(n1+n2),]
+
+dxgb_train <- xgb.DMatrix(data = X_train, label = trainSet_P$IDfake.fake)
+
+md <- xgb.train(data = dxgb_train, 
+            objective = "binary:logistic", 
+            nthread = 2,
+            nround = 100, max_depth = 10, eta = .1,
+            tree_method = "auto")
+
+
+phat <- predict(md, newdata = X_test)
+rocr_pred <- prediction(phat, testSet_P$IDfake.fake)
+cat(performance(rocr_pred, "auc")@y.values[[1]],"\n")
+
+```
+
+This model is no more successful than the first model; fine tuning of model parameters yielded no change in success rate.  
+
+#Approach 1.2 - Integrating the Twitter API  
+
+Unfortunately, using only one data source to build the models limits the capability of using the models for predictions. A model is only as good as the data used to train it and if the data is not up to date, the model will be similarly outdated. Luckily, we were able to fetch tweets from Twitter directly using their API. This API allowed us to get the most current tweets so that our models can be more effective at prediction.  
+
+
+##Using the Twitter API  
+
+
+###Load necessary packages  
+
+
+The Twitter API was used to download current data. The packages `twitteR`, `rlist` and `ResourceSelection` assist.  
+
+
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+
+library(twitteR)
+library(rlist)
+library(ResourceSelection)
+
+```
+
+###Setting keys and access tokens  
+
+
+With the packages loaded, keys and access tokens are set. The hidden code chunk below sets the values as variables to be recalled later in this markdown.  
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE, eval=FALSE}
+
+api_key <- "ZYoAk6RPmnwtpSULdOkfKqTga"
+
+secret_key <- "4ghHFmMtMS1EN4FLzh8OMoOoZBsfrnxjGksgBu1RJm0SEwIEvN"
+
+access_token <- "921826327237419010-y3LDsyX852MVRxyCYy74MAnKkRlbVHL"
+
+access_secret <- "Dztjs4tHCeoFL96B3DzZ9z0985EhlddYqzgofBbJ4Ax5f"
+
+setup_twitter_oauth(consumer_key = api_key, consumer_secret = secret_key, access_token = access_token, access_secret = access_secret)
+
+```
+
+###Pulling the data  
+
+Data were pulled via API; to ensure the validity of the code in this markdown and protect security, the data were downloaded and stored in a table in the cloud database. The code chunk below details the programming for the API call.  
+
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+
+#Compiling with API calls takes an extended period of time.
+#Commenting this out and pulling data from preloaded DB
+#Due to rate limits, pulling this data fresh from the API will take aprox 2 hours. 
+#Tweet text download from API
+tweet_list <- list()
+for(i in v_users_search){
+  x <- searchTwitter(as.character(i),n=100)
+  tweet_list <- list.append(tweet_list,x)
+  Sys.sleep(10)
+}
+
+tweets <- vector()
+for(i in tweet_list){
+  for(f in i){
+   
+    tweets <- c(tweets,f$text )
+      
+    }
+}
+ 
+#downloaduser profiles from API
+user_objs <- list()
+
+for(i in v_users$screen_name){
+  user_objs <- list.append(user_objs,getUser(i))
+  Sys.sleep(10)
+}
+
+id <- vector()
+name <- vector()
+screen_name <- vector()
+statuses_count <- vector()
+followers_count <- vector()
+friends_count <- vector()
+favourites_count <- vector()
+listed_count <- vector()
+created_at <- vector()
+lang <- vector()
+location <- vector()
+default_profile <- vector()
+default_profile_image <- vector()
+profile_image_url <- vector()
+protected <- vector()
+verified <- vector()
+description <- vector()
+for(i in user_objs){
+  id <- c(id,i$id)
+  name <- c(name,i$name)
+  screen_name <- c(screen_name,i$screenName)
+  statuses_count <- c(statuses_count,i$statusesCount)
+  followers_count <- c(followers_count,i$followersCount)
+  friends_count <- c(friends_count,i$friendsCount)
+  favourites_count <- c(favourites_count,i$favoritesCount)
+  listed_count <- c(listed_count,i$getListedCount())
+  created_at <- c(created_at,i$created)
+  lang <- c(lang,i$lang)
+  location <- c(location,i$location)
+  default_profile <- c(default_profile,0)
+  default_profile_image <- c(default_profile_image,0)
+  profile_image_url <- c(profile_image_url,i$getProfileImageUrl())
+  protected <- c(protected,i$protected)
+  verified <- c(verified,i$verified)
+  description <- c(description,i$description)
+  }
+
+users_df <- data.frame(id,name,screen_name,statuses_count,followers_count,friends_count,favourites_count,
+                       listed_count,created_at,lang,location,default_profile,default_profile_image,profile_image_url,protected,
+                       verified,description)
+
+```
+
+
+The following code was used to clean verified tweets downloaded via Twitter API. Once cleaned, data were uploaded to GitHub (https://raw.githubusercontent.com/sigmasigmaiota/FinalProject607/master/verified_clean.csv) and uploaded to a table in the cloud database.  
+
+
+```{r message=FALSE,warning=FALSE,eval=FALSE}
+
+verifiedR<-fread('C:/MSDS/FinalProject607/tweets_verified.csv',stringsAsFactors = FALSE,header = T, sep = ',')
+
+#remove all character clusters without at least one vowel
+verifiedR$text<-sapply(str_extract_all(verifiedR$text,"(\\S*[AEIOUaeiou]+\\S*)"),toString)
+##this for verified_clean
+verifiedR$text<-gsub(","," ",verifiedR$text)
+verifiedR$text<-gsub("@"," ",verifiedR$text)
+
+#omit words with colons
+verifiedR$text<-gsub("\\S*:\\S*","",verifiedR$text)
+
+#remove special characters by replacing with apostrophe, then removing apostrophe
+verifiedR$text<-gsub("[^0-9A-Za-z///' ]","'" , verifiedR$text,ignore.case = TRUE)
+verifiedR$text <- gsub("'","" , verifiedR$text,ignore.case = TRUE)
+
+##these two for verified_clean
+#remove non-ASCII characters
+verifiedR$text<-replace_non_ascii(verifiedR$text,'')
+#remove observations which contain no words, eliminated by last three lines of code
+verifiedR<-verifiedR[which(verifiedR$text!=''),]
+
+verifiedR$text<-str_trim(verifiedR$text)
+verifiedR$fake<-str_trim(verifiedR$fake)
+
+write.csv(verifiedR,"C:/MSDS/FinalProject607/verified_clean.csv",row.names=FALSE)
+
+```
+
+##Loading the API data into R  
+
+We chose to train and test models using both older tweet texts listed above and current data downloaded via API. Data were downloaded and cleaned, training datasets and testing datasets prepared.  
+
+```{r message=FALSE,warning=FALSE}
+
+reqst10 <- dbSendQuery(connection,"select * from tweets.verified")
+verifiedSet <- dbFetch(reqst10,n=-1)
+
+trainSet_orig$train<-NULL
+testSet_orig$train<-NULL
+
+trainSet_orig$test = "train"
+testSet_orig$test = "test"
+
+set.seed(100)
+verifiedSet$test = sample(c("train","test"),length(verifiedSet$text),replace = T)
+
+combinedset = rbind(trainSet_orig,testSet_orig,verifiedSet)
+
+```
+
+##Preparing the corpus  
+
+###Cleaning the text  
+
+The text is cleaned by changing all words to lowercase, removing english stopwords, stripping whitespace from each word, and stemming the words. This cleaning prevents similar words from being counted as different words. 
+
+```{r warning=FALSE, message=FALSE}
+corpus = Corpus(VectorSource(combinedset$text))
+
+corpus = corpus %>%
+  tm_map(tolower) %>%
+  tm_map(removeWords,c(stopwords("english"))) %>%
+  tm_map(stripWhitespace) %>%
+  tm_map(stemDocument)
+```
+
+###Creating the document term matrix  
+
+The code below turns the text into a document term matrix and removes the sparse terms.  
+
+
+Document term matrices are how machine learning models understand text data. They are essentially a matrix of word counts per document. Sparse terms are removed to prevent overfitting the data.  
+
+
+
+```{r warning=FALSE, message=FALSE}
+frequencies = DocumentTermMatrix(corpus)
+
+sparse = removeSparseTerms(frequencies,0.99)
+```
+
+Additional adjustment is needed to convert to a usable dataframe.  
+
+The code below transforms the document term matrix back into a dataframe and standardizes the words to make sure they are consistent between dataframes.  
+
+
+```{r warning=FALSE, message=FALSE}
+newsparse = as.data.frame(as.matrix(sparse))
+
+colnames(newsparse) = make.names(colnames(newsparse))
+```
+
+##Building the models  
+
+###Splitting test and training sets  
+
+The dataframe is split into training and testing sets, preserving designations of "test" or "train" in the original data downloaded from the cloud instance.  
+
+
+```{r warning=FALSE, message=FALSE}
+mytrain = newsparse[combinedset$test == "train",]
+mytest = newsparse[combinedset$test == "test",]
+```
+
+###Model 4 - Extreme Gradient Boosting  
+
+The code below creates a special matrix for the xgboost algorithm to use. The xgboost algorithm does not accept normal document term matrices as input, so it needs to be transformed into an xgboost matrix before training the xgboost model.  
+
+Due to the inaccuracies of prior models, we attemped to train another model using `xgboost`; the model did not improve upon the success rate of other models. The code is preserved here but not evaluated to save processing time for this markdown.  
+ 
+```{r warning=FALSE, message=FALSE, eval=FALSE}
+ctrain = xgb.DMatrix(Matrix(data.matrix(mytrain[,!colnames(mytrain) %in% c("fake")])), label = subset(combinedset,test == "train")$fake)
+
+xgboostdefault = train(x = ctrain,
+                             y = subset(combinedset,test == "train")$fake,
+                             method = "xgbDART",
+                             trControl = trainControl(method = "boot", number = 2))
+```
+
+###Model 5 - Random Forest  
+
+The random forest model uses random sets of decision trees to classify data. We created a model using 30 decision trees and ran a bootstrap resample 10 times and picked the best model.  
+
+```{r warning=FALSE, message=FALSE}
+rf30 = train(x = mytrain,
+             y = subset(combinedset,test == "train")$fake,
+             method = "rf",
+             ntree = 30,
+             trControl = trainControl(method = "boot", number = 10))
+```
+
+###Model 6 - Support Vector Machine  
+
+
+The support vector machine uses maximum width partitions to classify data. We used the default support vector machine model and ran a bootstrap resample 10 times and picked the best model.  
+
+```{r warning=FALSE, message=FALSE}
+svm = train(x = mytrain,
+             y = subset(combinedset,test == "train")$fake,
+             method = "svmLinear3",
+             trControl = trainControl(method = "boot", number = 10))
+```
+
+###Model 7 - Bayesian Generalized Linear Models  
+
+The Bayes general linear model is a modified iteration of the logistic regression model. This algorithm weighs uncertainty higher compared to a logistic regression model, which makes it more conservative when making predictions. As a result, this model is often more robust than traditional logistic regression. The model we created was the default Bayes general linear model and we ran a bootstrap resample 10 times and picked the best model.
+
+
+```{r warning=FALSE, message=FALSE}
+
+library(arm)
+
+bayesglm = train(x = mytrain,
+             y = subset(combinedset,test == "train")$fake,
+             method = "bayesglm",
+             trControl = trainControl(method = "boot", number = 10))
+
+```
+
+###Model Diagnostics and Comparison  
+
+The code below compares the Bayes general linear model, support vector machine, and random forest algorithms. We did not include the extreme gradient boost model because it performed extremely poorly and was not worth using. According to the caret comparison plot below, all the models show very similar accuracy and kappa values. The accuracy of all the models hovers around 0.65, which is respectable, however, the kappa values are less than 0.1. The kappa statistic measures how the predictions from the model differ from a random classifier. The higher the kappa value, the better the model (usually). Models with kappa values less than 0.4 are considered bad models. Unfortunately, all the models used are pretty abysmal. Luckily, there are ways to boost weak learners through ensemble methods.  
+
+
+```{r warning=FALSE, message=FALSE}
+
+compare = resamples(list(RF30 = rf30,
+                          SVM = svm,
+                          BayesGLM = bayesglm))
+
+bwplot(compare)
+```
+##Testing the models  
+
+The code below makes the predictions on the test data using each algorithm.  
+
+```{r warning=FALSE, message=FALSE}
+#xgbdefaultpredict = predict(xgboostdefault, newdata = data.matrix(mytest))
+
+rf30predict = predict(rf30, newdata = data.matrix(mytest))
+
+svmpredict = predict(svm, newdata = data.matrix(mytest))
+
+bayesglmpredict = predict(bayesglm, newdata = data.matrix(mytest))
+```
+
+###Ensemble method  
+
+The ensemble method is a machine learning technique that combines groups of machine learning models into one. Instead of using just one model, the ensemble takes the predictions of all the models and chooses the most common prediction for each row. In other words, each model gets to "vote" for one prediction and the prediction with the most "votes" is selected as the ensemble prediction. By democratizing the machine learning models, the ensemble can average out the strengths and weaknesses of each model and create a more robust prediction.  
+
+```{r warning=FALSE, message=FALSE}
+ensembletest = subset(combinedset,test == "test")
+
+ensembletest$rf = rf30predict
+ensembletest$svm = svmpredict
+ensembletest$bayesGLM = bayesglmpredict
+
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+
+ensemblematrix = cbind(rf30predict,svmpredict,bayesglmpredict) - 1
+
+ensembletest$ensemble = sapply(1:length(ensembletest$text),function(x) Mode(ensemblematrix[x,]))
+```
+
+##Final model performance  
+
+After building each model, testing, and ensembling the methods, the results are interesting. Overall, each model performed quite poorly. According to the confusion matrices seen below, the predictions for each of the models are nearly identical. It is strange that three different models that used three different methods would all return the same result. Perhaps there was one significant feature that identified bots somewhat consistently that each algorithm found.  
+
+Given that the methods had such similar results, the ensemble did not work as intended. Since each model found the same significant features, they all made the same predictions. As a result, there was very little differentiation between the models to justify the use of ensembling.  
+
+Overall, these models were unsuccessful at predicting fake followers using only twitter text.  
+
+```{r warning=FALSE, message=FALSE}
+#table(subset(combinedset,test == "test")$fake, xgbdefaultpredict)
+
+
+table(subset(combinedset,test == "test")$fake, rf30predict)
+
+
+table(subset(combinedset,test == "test")$fake, svmpredict)
+
+
+table(subset(combinedset,test == "test")$fake, bayesglmpredict)
+
+
+table(subset(combinedset,test == "test")$fake, ensembletest$ensemble)
+```
+
+#Approach 2 - User Profile  
+
+In the previous section, we found that tweet text was not the best predictor of fake followers.  
+
+When looking through the data, there are some glaring issues that prevent this classifier from performing well. The first problem is that the documents are very sparse. In other words, there are very few features that are shared among most tweets, which makes it difficult for the classifier to group similar tweets together. If the classifier cannot group similar tweets together, it will either try to guess the class randomly or overfit each tweet into its own group. The second problem is that the tweets cannot be linked to the accounts that posted them. By linking tweets to accounts, it is possible to identify other data features that may be significant in identifying bots. This includes points like number of followers, age of the account, and account activity. Without these features, the classifier needs to rely entirely on text alone to classify the tweets, which has already been shown to be quite difficult.  
+
+Given that the tweet text is unreliable, the next step is to look into account profile features to see if there is a relationship between these characteristics and fake follower behavior. In this next section, we try using traditional statistics to find some answers. Hopefully, twitter profiles can provide a different perspective to this fake follower classification problem.  
+
+##Data - Archive  
+
+An additional method: binary logistic regression on user profile data. Data were cleaned and uploaded to the cloud. 
+
+```{r message=FALSE,warning=FALSE,eval=FALSE}
+
+fakeusersR<-fread('C:/MSDS/fake_followers.csv/users.csv',stringsAsFactors = FALSE,header = T, sep = ',')
+genusersR<-fread('C:/MSDS/genuine_accounts.csv/users.csv',stringsAsFactors = FALSE,header = T, sep = ',')
+
+fakeusers<-fakeusersR[,c("screen_name","statuses_count","followers_count","friends_count","favourites_count","listed_count","geo_enabled","default_profile","default_profile_image","protected","verified","notifications","contributors_enabled","following")]
+
+fakeusers$fake<-1
+
+genusers<-genusersR[,c("screen_name","statuses_count","followers_count","friends_count","favourites_count","listed_count","geo_enabled","default_profile","default_profile_image","protected","verified","notifications","contributors_enabled","following")]
+
+genusers$fake<-0
+
+users<-as.data.frame(rbind(fakeusers,genusers))
+users[is.na(users)]<-0
+
+write.csv(users,"C:/MSDS/FinalProject607/users.csv",row.names=FALSE)
+
+```
+
+After upload to cloud database, data are downloaded using methods previously shown in this markdown.  
+
+
+```{r message=FALSE, warning=FALSE}
+
+reqst3 <- dbSendQuery(connection,"select * from tweets.profiles")
+users <- dbFetch(reqst3,n=-1)
+
+#Remove three empty columns: notifications, contributors_enabled, and following
+users<-users[,!names(users) %in% c("notifications","contributors_enabled","following")]
+
+#define continuous variables and factors.
+users$screen_name<-as.factor(users$screen_name)
+users$geo_enabled<-as.factor(users$geo_enabled)
+users$default_profile<-as.factor(users$default_profile)
+users$default_profile_image<-as.factor(users$default_profile_image)
+users$protected<-as.factor(users$protected)
+users$verified<-as.factor(users$verified)
+users$fake<-as.factor(users$fake)
+
+```
+
+Data were split into training and testing sets.  
+
+```{r message=FALSE, warning=FALSE}
+
+FU<-users[which(users$fake == 1),]
+GU<-users[which(users$fake == 0),]
+
+set.seed(1960)
+trainuserfake<-sample(1:nrow(FU),.5*nrow(FU))
+trainusergen<-sample(1:nrow(GU),.5*nrow(GU))
+
+TUF<-FU[trainuserfake,]
+TUG<-GU[trainusergen,]
+
+trainUSERS<-as.data.frame(rbind(TUF,TUG))
+
+testFU<-users[-trainuserfake,]
+testGU<-users[-trainusergen,]
+
+testUSERS<-as.data.frame(rbind(testFU,testGU))
+
+
+```
+
+###Model 8 - Binary Logistic Regression  
+
+A model was trained exclusively on archived user profile data. Using the package `stats`, `glm` regressed fake status on counts of status changes, followers, friends, favourites, count of instances of being listed, as well as binary variables that described profile defaults, geographic identification, protected and verified status.  
+
+```{r message=FALSE, warning=FALSE}
+
+library(stats)
+
+logitmodel<-glm(fake ~ statuses_count+followers_count+friends_count+favourites_count+listed_count+geo_enabled+
+                  default_profile+default_profile_image+protected+verified,
+                data=trainUSERS,
+                family="binomial")
+
+predicted<-plogis(predict(logitmodel,testUSERS))
+
+library(InformationValue)
+optimumCut<-optimalCutoff(testUSERS$fake, predicted)[1]
+
+summary(logitmodel)
+
+```
+
+We were surprised to find that the variables "protected" and "verified" do not contribute significantly to the model, while the first 9 variables are statistically significant (p < .001). We will run the model again with those variables removed.  
+
+```{r message=FALSE, warning=FALSE}
+
+
+logitmodel2<-glm(fake ~ statuses_count+followers_count+friends_count+favourites_count+listed_count+geo_enabled+
+                  default_profile+default_profile_image,
+                data=trainUSERS,
+                family=binomial)
+
+predicted<-plogis(predict(logitmodel2,testUSERS))
+
+#library(InformationValue)
+#optimumCut<-optimalCutoff(testUSERS$fake, predicted)[1]
+
+summary(logitmodel2)
+
+```
+
+An additional model was run below using the library `glm2` for comparison.  
+
+```{r message=FALSE, warning=FALSE}
+
+library(glm2)
+
+logitmodel3<-glm2(fake ~ statuses_count+followers_count+friends_count+favourites_count+listed_count+geo_enabled+
+                  default_profile+default_profile_image,
+                data=trainUSERS,
+                family=binomial)
+
+predicted2<-plogis(predict(logitmodel3,testUSERS))
+
+#library(InformationValue)
+#optimumCut<-optimalCutoff(testUSERS$fake, predicted)[1]
+
+summary(logitmodel3)
+
+```
+
+The second more parsimonious model reveals interesting insights. The log odds that a user is fake decreases by approximately 5.5 if their profile keeps the default image; if default profile attributes are not changed the log odds that a user is fake increases by 1.5. If geographic identification is enabled the log odds decrease by 2.4. Let's convert the coefficients and calculate confidence intervals.  
+
+
+```{r message=FALSE,warning=FALSE}
+
+exp(cbind(coef(logitmodel2),confint.default(logitmodel2)))
+exp(cbind(coef(logitmodel3),confint.default(logitmodel3)))
+
+```
+
+There are no remarkable differences in the two models.  
+
+####Misclassification  
+
+Misclassification error represents the percentage of incorrectly matched predictions. Lower misclassification error indicates better model performance.  
+
+
+```{r message=FALSE,warning=FALSE}
+
+misClassError(testUSERS$fake, predicted, threshold = optimumCut)
+
+
+```
+
+####Receiver Operating Characteristics Curve (ROC)  
+
+ROC is plotted to assess model performance.  
+
+```{r message=FALSE,warning=FALSE}
+
+plotROC(testUSERS$fake,predicted)
+
+```
+
+The plot of sensitivity on specificity seems to indicate a remarkable success rate; more exploration is needed to assess the performance of the model to avoid errors in performance assessment.  
+
+####Concordance  
+
+From http://r-statistics.co/Logistic-Regression-With-R.html:
+
+"Ideally, the model-calculated-probability-scores of all actual Positive's, (aka Ones) should be greater than the model-calculated-probability-scores of ALL the Negatives (aka Zeroes). Such a model is said to be perfectly concordant and a highly reliable one. This phenomenon can be measured by Concordance and Discordance.
+
+In simpler words, of all combinations of 1-0 pairs (actuals), Concordance is the percentage of pairs, whose scores of actual positives are greater than the scores of actual negatives. For a perfect model, this will be 100%. So, the higher the concordance, the better is the quality of model."
+
+```{r message=FALSE,warning=FALSE}
+
+Concordance(testUSERS$fake, predicted)
+
+
+```
+
+####Sensitivity & Specificity  
+
+Also from http://r-statistics.co/Logistic-Regression-With-R.html:
+
+"Sensitivity (or True Positive Rate) is the percentage of 1s (actuals) correctly predicted by the model, while, specificity is the percentage of 0s (actuals) correctly predicted. Specificity can also be calculated as 1-False Positive Rate."
+
+```{r message=FALSE, warning=FALSE}
+
+sensitivity(testUSERS$fake, predicted, threshold=optimumCut)
+
+specificity(testUSERS$fake, predicted, threshold=optimumCut)
+
+```
+
+####Confusion Matrix  
+
+Columns are true actual statuses and the rows represent the predictions.
+
+```{r message=FALSE,warning=FALSE}
+
+confusionMatrix(testUSERS$fake, predicted, threshold=optimumCut)
+
+```
+
+##Data - Twitter API
+
+User profile data from Twitter API (see code chunk above) was posted to https://raw.githubusercontent.com/murphystout/data-607/master/verified_users.csv.  
+
+
+```{r warning=FALSE, message=FALSE}
+#All User Data is available via csv as well:
+all_user_data <- read.csv("https://raw.githubusercontent.com/murphystout/data-607/master/all_users_data.csv")
+
+#all_user_data <- users_df
+all_user_data_numeric <- data.frame(all_user_data$statuses_count,all_user_data$followers_count,all_user_data$friends_count,all_user_data$favourites_count,all_user_data$listed_count,all_user_data$fake)
+
+```
+
+###Model 9 - Binary Logistic Regression
+
+We use a generalized linear model, i.e. binary logistic regression, to try and predict a fake user profile based on its profile metadata.
+
+```{r warning=FALSE, message=FALSE}
+
+modelAPI <- glm(all_user_data$fake ~ all_user_data$statuses_count + all_user_data$followers_count + all_user_data$friends_count + all_user_data$favourites_count + all_user_data$listed_count)
+
+summary(modelAPI)
+
+#Removing 'friends_count', high p value
+
+modelAPI <- glm(all_user_data$fake ~ all_user_data$statuses_count + all_user_data$followers_count + all_user_data$favourites_count + all_user_data$listed_count)
+
+summary(modelAPI)
+
+```
+
+The model provided low p-values across its predictor variables, but ultimately a R-Square of ~30% isn't very good.
+
+We proceed to test Goodness of Fit via the Hoslem Test
+
+####Testing Hostlem Goodness of Fit (GOF)
+
+```{r warning=FALSE, message=FALSE}
+
+library(ResourceSelection)
+hoslem.test(factor(all_user_data$fake), fitted(modelAPI), g=2)
+
+```
+
+A significant (low) p-value indicates poor model fit but does not indicate in what respect the model does not fit.  
+
+####ROC Curve
+
+```{r message=FALSE, warning=FALSE}
+
+predicted3<-plogis(predict(modelAPI,all_user_data))
+plotROC(all_user_data$fake,predicted3)
+
+```
+
+#Results  
+
+The table below summarizes the relative success of each approach, method and model. Model 4 is omitted as indicated above.  
+
+```{r message=FALSE,warning=FALSE}
+
+model.number<-c("Model 1","Model 2","Model 3","Model 5","Model 6","Model 7","Model 8","Model 9")
+model.name<-c("RF","SGB","XGB","RF","SVM","Bayes","BLR","BLR")
+model.sample<-c("archive","archive","archive","combined","combined","combined","archive","API")
+model.success<-c(50.1,49.8,50.5,49.8,49.7,49.7,99.5,89.3)
+
+results.visual<-cbind(model.number,model.name,model.sample,model.success)
+
+library(kableExtra)
+kable(results.visual,
+           keep.rownames = FALSE,
+      caption="Approximate Success of each Model")%>%
+           kable_styling()
+
+
+
+```
+The models prepared on text analysis were not successful. The ability to predict genuine follower status based solely on character groups in tweets is compromised by the length of each tweet. As discussed previously, there is insufficient overlap among tweets in the data, creating an impossibly sparse dataset from which to build an algorithm. Document matrices with numerous variables added to processing time to such an extent as to make the model training too lengthy. Among the failed models, the `randomForest` appeared to predict genuine followers based on text only slightly more successfully than the other models.  
+
+The second approach, analyzing user profile data, yielded more satisfactory results, with the model built on archived tweets most successful; the inclusion of more variables improved model fit. While the number of status changes, the count of followers, count of favourites, list count form the foundation for the model success, the inclusion of binary variables indicating default profile and default profile image status were statistically significant.  
+
+The table below recalls the coefficients and the confidence intervals for the most successful model.  
+
+```{r message=FALSE, warning=FALSE}
+
+kable(exp(cbind(coef(logitmodel2),confint.default(logitmodel2))),
+      caption="Coefficents and Confidence Intervals, Model 8")%>%
+  kable_styling()
+
+
+```
+
+With the statistical significance of each variable effectively 0, if a user profile remains at default settings the odds that the profile is fake is 4.5 greater. Similarly, odds increase by approximately 1.0 for increases in count of friends, followers and status changes. More analysis is needed to confirm the integrity of the model.  
+
+Though more analysis should be conducted to confirm our observations, our analysis has indicated that user profile data are the benchmark for assessing whether users are fake or genuine.  
+
+
+#Conclusions  
+
+Is it possible to predict fake followers using tweet text? According to our analysis, it is not easy. Using tweets as data poses very specific and difficult challenges for the modern data scientist.  Twitter users, confined to 140 characters, have no time or space for long conversation. Tweets are often short, grammatically incorrect, and lack any form of discernable speech most of the time. This has led to problems with data sparsity and stemming, which is a particularly difficult problem for machine learning algorithms to overcome. No matter what algorithm we tried or which training set we used, none of our models were able to make accurate predictions based off of tweet text.  
+
+Despite our setbacks, we did not give up. While the bots are able to imitate human speech, they have trouble imitating human behavior. Humans have friends. They interact with each other; they comment on tweets, retweet posts, and like each others' statuses. Follower bots do none of these things. Given that the follower bot's entire existence revolves around inflating the follower count of specific individuals, they have no purpose interacting with twitter in any other way. As a result, fake follower share very similar characteristics, such as low friend count, lack of meaningful engagement, and predictable posting behavior. Using account profile attributes, we were able to identify fake followers with significantly higher accuracy compared to using the text-only machine learning approach.  
+
+
+Fake followers can tweet like humans, but they can't act like them.  
+
+#Sources  
+
+The following sites were useful resources in developing this analysis:
+
+use of alternative models and methods with caret
+https://amunategui.github.io/binary-outcome-modeling/
+
+general use of caret
+https://cfss.uchicago.edu/notes/supervised-text-classification/
+
+general knowledge and methods
+https://topepo.github.io/caret/variable-importance.html
+https://topepo.github.io/caret/model-training-and-tuning.html
+
+https://www.tidytextmining.com/nasa.html
+
+https://www.rdocumentation.org/packages/caret/versions/4.47/topics/train
+https://www.rdocumentation.org/packages/caret/versions/5.05.004/topics/predict.train
+
+https://www.analyticsvidhya.com/blog/2016/12/practical-guide-to-implement-machine-learning-with-caret-package-in-r-with-practice-problem/
+
+http://www.rebeccabarter.com/blog/2017-11-17-caret_tutorial/
+
+https://github.com/topepo/caret/issues/141
+
+https://www.hvitfeldt.me/blog/binary-text-classification-with-tidytext-and-caret/
